@@ -1,0 +1,89 @@
+.md-editor-preview .md-admonition {
+  --md-admonition-color: #64748b;
+  --md-admonition-bg: color-mix(in srgb, var(--md-admonition-color) 8%, transparent);
+  margin: 20px 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--md-admonition-color) 42%, transparent);
+  border-left: 4px solid var(--md-admonition-color);
+  border-radius: 6px;
+  background: var(--md-admonition-bg);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+}
+
+.md-editor-preview .md-admonition-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px 9px;
+  color: var(--md-admonition-color);
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.md-editor-preview .md-admonition-marker {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.md-editor-preview .md-admonition-content {
+  padding: 0 14px 12px;
+}
+
+.md-editor-preview .md-admonition-content > :first-child {
+  margin-top: 0;
+}
+
+.md-editor-preview .md-admonition-content > :last-child {
+  margin-bottom: 0;
+}
+
+.md-editor-preview .md-admonition-note {
+  --md-admonition-color: #64748b;
+}
+
+.md-editor-preview .md-admonition-info {
+  --md-admonition-color: #0284c7;
+}
+
+.md-editor-preview .md-admonition-tip {
+  --md-admonition-color: #059669;
+}
+
+.md-editor-preview .md-admonition-warning {
+  --md-admonition-color: #d97706;
+}
+
+.md-editor-preview .md-admonition-danger {
+  --md-admonition-color: #dc2626;
+}
+
+.md-editor-dark .md-editor-preview .md-admonition {
+  --md-admonition-bg: color-mix(in srgb, var(--md-admonition-color) 12%, transparent);
+  border-color: color-mix(in srgb, var(--md-admonition-color) 55%, transparent);
+  border-left-color: var(--md-admonition-color);
+  box-shadow: none;
+}
+
+.md-editor-dark .md-editor-preview .md-admonition-note {
+  --md-admonition-color: #94a3b8;
+}
+
+.md-editor-dark .md-editor-preview .md-admonition-info {
+  --md-admonition-color: #38bdf8;
+}
+
+.md-editor-dark .md-editor-preview .md-admonition-tip {
+  --md-admonition-color: #34d399;
+}
+
+.md-editor-dark .md-editor-preview .md-admonition-warning {
+  --md-admonition-color: #fbbf24;
+}
+
+.md-editor-dark .md-editor-preview .md-admonition-danger {
+  --md-admonition-color: #fb7185;
+}

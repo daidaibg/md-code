@@ -1,0 +1,47 @@
+# Node / Vite
+node_modules/
+dist/
+.vite/
+.npm-cache/
+*.tsbuildinfo
+
+# Local environment
+.env
+.env.*
+!.env.example
+*.local
+
+# Local reference source
+.reference/
+
+# Rust / Tauri generated output
+src-tauri/.cargo-check-*/
+src-tauri/target-validation/
+installer/src-tauri/target/
+installer/dist/
+release/
+
+# Test and coverage output
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini

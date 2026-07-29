@@ -1,0 +1,45 @@
+{
+    "name": "md-code",
+    "private": true,
+    "version": "0.2.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vue-tsc --noEmit && vite build",
+        "typecheck": "vue-tsc --noEmit",
+        "preview": "vite preview",
+        "tauri": "tauri",
+        "tauri:dev": "tauri dev",
+        "tauri:build": "tauri build",
+        "installer:dev": "npm --prefix installer run dev",
+        "installer:frontend:build": "npm --prefix installer run build",
+        "installer:build": "node scripts/build-installer.mjs"
+    },
+    "dependencies": {
+        "@mdit/plugin-katex": "^1.0.1",
+        "@mdit/plugin-tasklist": "^1.0.1",
+        "@tauri-apps/api": "^2.11.1",
+        "@tauri-apps/plugin-dialog": "^2.7.2",
+        "@vavt/markdown-theme": "^5.0.2",
+        "dompurify": "^3.4.12",
+        "highlight.js": "^11.11.1",
+        "katex": "^0.18.1",
+        "markdown-it": "^14.3.0",
+        "mermaid": "^11.16.0",
+        "monaco-editor": "^0.56.0",
+        "pinia": "^4.0.2",
+        "sortablejs": "^1.15.7",
+        "vue": "^3.5.40"
+    },
+    "devDependencies": {
+        "@tauri-apps/cli": "^2.11.4",
+        "@types/markdown-it": "^14.1.2",
+        "@types/node": "^26.1.2",
+        "@types/sortablejs": "^1.15.9",
+        "@vitejs/plugin-vue": "^6.0.8",
+        "sass": "^1.102.0",
+        "typescript": "^5.9.3",
+        "vite": "^8.1.5",
+        "vue-tsc": "^3.3.8"
+    }
+}
