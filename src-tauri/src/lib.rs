@@ -11,6 +11,11 @@ use tauri::{Emitter, Manager};
 
 const OPEN_FILES_EVENT: &str = "md-code://open-files";
 
+#[tauri::command]
+fn exit_application(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -43,7 +48,8 @@ pub fn run() {
             write_binary_file,
             reveal_in_file_manager,
             initial_open_paths,
-            sync_file_watcher
+            sync_file_watcher,
+            exit_application
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

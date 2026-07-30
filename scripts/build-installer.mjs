@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -63,13 +63,7 @@ function runTauri(args, cwd) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-console.log('[1/5] 清理旧的 NSIS/MSI 输出，避免误用传统安装包');
-rmSync(resolve(rootDir, 'src-tauri', 'target', 'release', 'bundle'), {
-  recursive: true,
-  force: true
-});
-
-console.log('[2/5] 构建 MD Code 主程序（不生成 NSIS/MSI）');
+console.log('[1/3] 构建 MD Code 主程序（不生成 NSIS/MSI）');
 run(['run', 'tauri', '--', 'build', '--no-bundle'], rootDir);
 
 const mainExecutable = resolve(rootDir, 'src-tauri', 'target', 'release', 'md-code.exe');
@@ -77,7 +71,7 @@ if (!existsSync(mainExecutable)) {
   throw new Error(`主程序构建完成但未找到输出文件：${mainExecutable}`);
 }
 
-console.log('[3/5] 构建自定义中文安装器（单个 EXE）');
+console.log('[2/3] 构建自定义中文安装器（单个 EXE）');
 runTauri(['build', '--no-bundle'], resolve(rootDir, 'installer'));
 
 const source = resolve(
@@ -97,18 +91,8 @@ const destination = resolve(
   releaseDir,
   `MDCode_${packageMetadata.version}_x64-setup.exe`
 );
-rmSync(releaseDir, { recursive: true, force: true });
 mkdirSync(releaseDir, { recursive: true });
 copyFileSync(source, destination);
 
-console.log(`[4/5] 已生成自定义安装器：${destination}`);
-
-console.log('[5/5] 清理 Vite 打包中间文件');
-for (const generatedPath of [
-  resolve(rootDir, 'dist')
-]) {
-  rmSync(generatedPath, { recursive: true, force: true });
-}
-
-console.log(`交付文件（仅此一个）：${destination}`);
+console.log(`[3/3] 已生成自定义安装器：${destination}`);
 console.log('Cargo 编译缓存已保留在两个 src-tauri/target 目录中');

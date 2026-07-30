@@ -76,6 +76,19 @@
         </label>
         <button id="finish-button" type="button" class="primary-button finish-button">立即体验</button>
       </section>
+
+      <section id="running-dialog" class="dialog-backdrop" hidden>
+        <div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="running-dialog-title" aria-describedby="running-dialog-description">
+          <div class="dialog-icon" aria-hidden="true">!</div>
+          <h2 id="running-dialog-title">MD Code 正在运行</h2>
+          <p id="running-dialog-description">继续安装将强制关闭正在运行的旧版本及其后台进程。</p>
+          <p class="dialog-hint">旧版本中尚未保存的内容可能会丢失，请先保存重要文档。</p>
+          <div class="dialog-actions">
+            <button id="cancel-close-button" type="button" class="secondary-button">取消</button>
+            <button id="close-and-install-button" type="button" class="primary-button dialog-primary-button">强制关闭并继续</button>
+          </div>
+        </div>
+      </section>
     </main>
 
     <script src="./main.js"></script>

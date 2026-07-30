@@ -95,7 +95,4 @@ note、abstract、info、tip、success、question、warning、failure、danger�
 ## ☘️ em...
 
 none
-
-!!! warning
-这是一条警告信息
-!!!
+打

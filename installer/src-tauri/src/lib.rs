@@ -5,6 +5,8 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Mutex,
+    thread,
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
@@ -15,8 +17,11 @@ use std::os::windows::process::CommandExt;
 const APP_NAME: &str = "MD Code";
 const APP_VERSION: &str = "0.2.0";
 const APP_EXECUTABLE: &str = "MD Code.exe";
+const LEGACY_APP_EXECUTABLE: &str = "md-code.exe";
 const UNINSTALL_EXECUTABLE: &str = "uninstall.exe";
 const INSTALL_MARKER: &str = ".md-code-install";
+const UNINSTALL_REGISTRY_KEY: &str =
+    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\MD Code";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const PAYLOAD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/md-code-payload.exe"));
 
@@ -76,6 +81,10 @@ fn emit_progress(app: &AppHandle, percent: u8, message: impl Into<String>) {
 
 #[tauri::command]
 fn get_default_install_dir() -> String {
+    if let Some(install_dir) = get_previous_install_dir() {
+        return install_dir.to_string_lossy().into_owned();
+    }
+
     let data_drive = Path::new(r"D:\");
     if data_drive.is_dir() {
         return r"D:\app\MD Code".to_string();
@@ -88,6 +97,73 @@ fn get_default_install_dir() -> String {
         .join(APP_NAME)
         .to_string_lossy()
         .into_owned()
+}
+
+fn get_previous_install_dir() -> Option<PathBuf> {
+    let registry_path = UNINSTALL_REGISTRY_KEY.replacen(r"HKCU\", r"HKCU:\", 1);
+    let script = format!(
+        "[Console]::OutputEncoding = [Text.Encoding]::UTF8; \
+         (Get-ItemProperty -LiteralPath '{registry_path}' \
+         -Name InstallLocation -ErrorAction SilentlyContinue).InstallLocation"
+    );
+    let output = command("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let install_dir = String::from_utf8(output.stdout).ok()?;
+    let install_dir = install_dir.trim().trim_start_matches('\u{feff}').trim();
+    normalize_install_dir(install_dir).ok()
+}
+
+#[tauri::command]
+fn is_application_running() -> Result<bool, String> {
+    application_is_running()
+}
+
+fn application_is_running() -> Result<bool, String> {
+    let script = "if (Get-Process -Name 'MD Code','md-code' -ErrorAction SilentlyContinue) \
+                  { exit 0 } else { exit 1 }";
+    let status = command("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .status()
+        .map_err(|error| format!("无法检查正在运行的 MD Code：{error}"))?;
+
+    match status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err("无法检查正在运行的 MD Code".to_string()),
+    }
+}
+
+#[tauri::command]
+async fn close_running_application() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(close_running_application_blocking)
+        .await
+        .map_err(|error| format!("关闭旧版 MD Code 的任务异常结束：{error}"))?
+}
+
+fn close_running_application_blocking() -> Result<(), String> {
+    for executable_name in [APP_EXECUTABLE, LEGACY_APP_EXECUTABLE] {
+        let _ = command("taskkill.exe")
+            .args(["/F", "/T", "/IM", executable_name])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while application_is_running()? {
+        if Instant::now() >= deadline {
+            return Err("无法强制关闭旧版 MD Code，请在任务管理器中结束进程后再重试。".to_string());
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -152,6 +228,7 @@ fn install_payload(app: &AppHandle, options: &InstallOptions) -> Result<PathBuf,
 
     let install_dir = normalize_install_dir(&options.install_dir)?;
     let executable = install_dir.join(APP_EXECUTABLE);
+    let legacy_executable = install_dir.join(LEGACY_APP_EXECUTABLE);
     let temporary_executable = install_dir.join("MD Code.installing");
     let uninstaller = install_dir.join(UNINSTALL_EXECUTABLE);
 
@@ -182,6 +259,10 @@ fn install_payload(app: &AppHandle, options: &InstallOptions) -> Result<PathBuf,
         .map_err(|error| format!("保存主程序失败：{error}"))?;
     drop(output);
 
+    if legacy_executable.exists() {
+        fs::remove_file(&legacy_executable)
+            .map_err(|error| format!("无法清理旧版 MD Code，请先退出正在运行的程序：{error}"))?;
+    }
     if executable.exists() {
         fs::remove_file(&executable)
             .map_err(|error| format!("无法替换现有 MD Code，请先退出正在运行的程序：{error}"))?;
@@ -282,25 +363,34 @@ fn register_uninstaller(
     executable: &Path,
     uninstaller: &Path,
 ) -> Result<(), String> {
-    let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\MD Code";
-    reg_add(key, "DisplayName", "REG_SZ", APP_NAME)?;
-    reg_add(key, "DisplayVersion", "REG_SZ", APP_VERSION)?;
-    reg_add(key, "Publisher", "REG_SZ", "MD Code")?;
-    reg_add(key, "DisplayIcon", "REG_SZ", &quoted(executable))?;
+    reg_add(UNINSTALL_REGISTRY_KEY, "DisplayName", "REG_SZ", APP_NAME)?;
     reg_add(
-        key,
+        UNINSTALL_REGISTRY_KEY,
+        "DisplayVersion",
+        "REG_SZ",
+        APP_VERSION,
+    )?;
+    reg_add(UNINSTALL_REGISTRY_KEY, "Publisher", "REG_SZ", "MD Code")?;
+    reg_add(
+        UNINSTALL_REGISTRY_KEY,
+        "DisplayIcon",
+        "REG_SZ",
+        &quoted(executable),
+    )?;
+    reg_add(
+        UNINSTALL_REGISTRY_KEY,
         "InstallLocation",
         "REG_SZ",
         &install_dir.to_string_lossy(),
     )?;
     reg_add(
-        key,
+        UNINSTALL_REGISTRY_KEY,
         "UninstallString",
         "REG_SZ",
         &format!("{} --uninstall", quoted(uninstaller)),
     )?;
-    reg_add(key, "NoModify", "REG_DWORD", "1")?;
-    reg_add(key, "NoRepair", "REG_DWORD", "1")?;
+    reg_add(UNINSTALL_REGISTRY_KEY, "NoModify", "REG_DWORD", "1")?;
+    reg_add(UNINSTALL_REGISTRY_KEY, "NoRepair", "REG_DWORD", "1")?;
     Ok(())
 }
 
@@ -357,9 +447,10 @@ fn uninstall() -> Result<(), String> {
     }
 
     let _ = fs::remove_file(install_dir.join(APP_EXECUTABLE));
+    let _ = fs::remove_file(install_dir.join(LEGACY_APP_EXECUTABLE));
     let _ = fs::remove_file(install_dir.join(INSTALL_MARKER));
     let _ = remove_shortcuts();
-    let _ = reg_delete(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\MD Code");
+    let _ = reg_delete(UNINSTALL_REGISTRY_KEY);
     let _ = reg_delete(r"HKCU\Software\Classes\Applications\MD Code.exe");
 
     let cleanup = format!(
@@ -453,6 +544,8 @@ pub fn run() {
         .manage(InstallerState::default())
         .invoke_handler(tauri::generate_handler![
             get_default_install_dir,
+            is_application_running,
+            close_running_application,
             choose_install_dir,
             install_application,
             launch_installed_application

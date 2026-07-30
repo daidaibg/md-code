@@ -119,19 +119,28 @@ export function useDesktopWindow(options: DesktopWindowOptions): void {
       unlistenOpenFiles = await listen<string[]>(OPEN_FILES_EVENT, (event) => {
         enqueuePaths(event.payload);
       });
-      unlistenClose = await appWindow.onCloseRequested((event) => {
+      unlistenClose = await appWindow.onCloseRequested(async (event) => {
         if (allowClose) return;
+        event.preventDefault();
         if (options.isCloseConfirmationPending()) {
-          event.preventDefault();
           return;
         }
-        if (!options.hasModifiedDocuments()) return;
 
-        event.preventDefault();
-        options.requestCloseAll(async () => {
+        const exitApplication = async (): Promise<void> => {
           allowClose = true;
-          await appWindow.destroy();
-        });
+          try {
+            await invoke('exit_application');
+          } catch {
+            allowClose = false;
+          }
+        };
+
+        if (!options.hasModifiedDocuments()) {
+          await exitApplication();
+          return;
+        }
+
+        options.requestCloseAll(exitApplication);
       });
 
       unlistenDrop = await appWindow.onDragDropEvent((event) => {

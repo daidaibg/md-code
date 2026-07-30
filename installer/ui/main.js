@@ -20,12 +20,16 @@ const elements = {
   progressTrack: document.querySelector('#progress-track'),
   progressValue: document.querySelector('#progress-value'),
   progressPercent: document.querySelector('#progress-percent'),
-  progressMessage: document.querySelector('#progress-message')
+  progressMessage: document.querySelector('#progress-message'),
+  runningDialog: document.querySelector('#running-dialog'),
+  cancelCloseButton: document.querySelector('#cancel-close-button'),
+  closeAndInstallButton: document.querySelector('#close-and-install-button')
 };
 
 let installerState = 'ready';
 let progress = 0;
 let optionsOpen = true;
+let runningDialogResolve;
 
 function setState(nextState) {
   installerState = nextState;
@@ -94,12 +98,60 @@ async function installApplication(options, onProgress) {
   }
 }
 
+async function isApplicationRunning() {
+  if (!isTauriRuntime) return false;
+  return tauri.core.invoke('is_application_running');
+}
+
+async function closeRunningApplication() {
+  if (!isTauriRuntime) return;
+  await tauri.core.invoke('close_running_application');
+}
+
+function confirmCloseRunningApplication() {
+  elements.runningDialog.hidden = false;
+  elements.closeAndInstallButton.focus();
+  return new Promise((resolve) => {
+    runningDialogResolve = resolve;
+  });
+}
+
+function resolveRunningDialog(shouldClose) {
+  if (!runningDialogResolve) return;
+  elements.runningDialog.hidden = true;
+  const resolve = runningDialogResolve;
+  runningDialogResolve = undefined;
+  resolve(shouldClose);
+}
+
 async function startInstall() {
   const installDir = elements.installPath.value.trim();
   if (!installDir) {
     showError('请选择安装位置');
     setState('error');
     return;
+  }
+
+  showError('');
+  elements.installButton.disabled = true;
+  elements.installButton.textContent = '正在检查运行状态…';
+  try {
+    if (await isApplicationRunning()) {
+      const shouldClose = await confirmCloseRunningApplication();
+      if (!shouldClose) return;
+
+      elements.installButton.textContent = '正在关闭旧版本…';
+      await closeRunningApplication();
+    }
+  } catch (error) {
+    showError(error instanceof Error ? error.message : String(error));
+    setState('error');
+    return;
+  } finally {
+    elements.installButton.disabled = false;
+    if (installerState !== 'installing') {
+      elements.installButton.textContent = installerState === 'error' ? '重新安装' : '立即安装';
+    }
   }
 
   progress = 0;
@@ -136,6 +188,8 @@ elements.closeButton.addEventListener('click', () => {
 });
 elements.folderButton.addEventListener('click', () => void chooseInstallDir());
 elements.installButton.addEventListener('click', () => void startInstall());
+elements.cancelCloseButton.addEventListener('click', () => resolveRunningDialog(false));
+elements.closeAndInstallButton.addEventListener('click', () => resolveRunningDialog(true));
 elements.finishButton.addEventListener('click', async () => {
   if (elements.launchAfterInstall.checked && isTauriRuntime) {
     await tauri.core.invoke('launch_installed_application');

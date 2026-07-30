@@ -241,6 +241,7 @@ onBeforeUnmount(() => {
       :document="documentManager.pendingCloseDocument.value"
       :busy="documentManager.busy.value"
       :close-all="documentManager.pendingCloseAll.value"
+      :theme="resolvedTheme"
       @decide="documentManager.resolvePendingClose"
     />
 
