@@ -3,6 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { executeMarkdownCommand } from '@/editor/commands/markdownCommandLayer';
 import { getOrCreateModel } from '@/editor/monaco/modelRegistry';
 import { monaco } from '@/editor/monaco/setupMonaco';
+import type { MonacoSettings } from '@/store/settings';
 import type {
   CursorPosition,
   EditorCommand,
@@ -18,6 +19,7 @@ const props = defineProps<{
   language: SupportedLanguage;
   theme: ResolvedTheme;
   cursor: CursorPosition;
+  settings: MonacoSettings;
 }>();
 
 const emit = defineEmits<{
@@ -38,6 +40,29 @@ let applyingExternalScroll = false;
 
 function editorTheme(): string {
   return props.theme === 'dark' ? 'vs-dark' : 'vs';
+}
+
+function resolvedWordWrap(): 'on' | 'off' {
+  if (props.settings.wordWrap === 'language') {
+    return props.language === 'markdown' ? 'on' : 'off';
+  }
+  return props.settings.wordWrap;
+}
+
+function settingsOptions(): monaco.editor.IEditorOptions & monaco.editor.IGlobalEditorOptions {
+  return {
+    fontLigatures: props.settings.fontLigatures,
+    fontSize: props.settings.fontSize,
+    lineHeight: props.settings.lineHeight,
+    minimap: { enabled: props.settings.minimap },
+    wordWrap: resolvedWordWrap(),
+    renderWhitespace: props.settings.renderWhitespace,
+    smoothScrolling: props.settings.smoothScrolling,
+    scrollBeyondLastLine: props.settings.scrollBeyondLastLine,
+    tabSize: props.settings.tabSize,
+    detectIndentation: props.settings.detectIndentation,
+    stickyScroll: { enabled: props.settings.stickyScroll }
+  };
 }
 
 function currentScrollRatio(): number {
@@ -61,22 +86,12 @@ onMounted(() => {
     theme: editorTheme(),
     automaticLayout: false,
     fontFamily: 'Cascadia Code, JetBrains Mono, Consolas, monospace',
-    fontLigatures: true,
-    fontSize: 14,
-    lineHeight: 22,
-    minimap: { enabled: false },
-    wordWrap: props.language === 'markdown' ? 'on' : 'off',
-    renderWhitespace: 'selection',
+    ...settingsOptions(),
     renderLineHighlight: 'line',
-    smoothScrolling: true,
-    scrollBeyondLastLine: false,
     padding: { top: 18, bottom: 30 },
-    tabSize: 2,
     insertSpaces: true,
-    detectIndentation: true,
     bracketPairColorization: { enabled: true },
     guides: { bracketPairs: true, indentation: true },
-    stickyScroll: { enabled: false },
     overviewRulerBorder: false,
     fixedOverflowWidgets: true
   });
@@ -121,8 +136,14 @@ watch(
   (language) => {
     if (!model) return;
     monaco.editor.setModelLanguage(model, language);
-    editor?.updateOptions({ wordWrap: language === 'markdown' ? 'on' : 'off' });
+    editor?.updateOptions({ wordWrap: resolvedWordWrap() });
   }
+);
+
+watch(
+  () => props.settings,
+  () => editor?.updateOptions(settingsOptions()),
+  { deep: true }
 );
 
 watch(
@@ -233,7 +254,29 @@ defineExpose({
   height: 100%;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   background: var(--editor-bg);
+}
+
+.monaco-editor-host :deep(.find-widget .find-actions),
+.monaco-editor-host :deep(.find-widget .find-part .controls) {
+  align-items: center;
+}
+
+.monaco-editor-host :deep(.find-widget .button),
+.monaco-editor-host :deep(.find-widget .monaco-custom-toggle) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.monaco-editor-host :deep(.find-widget .matchesCount) {
+  display: flex;
+  align-items: center;
+  line-height: normal;
+}
+
+.monaco-editor-host :deep(.find-widget .codicon-widget-close) {
+  top: 7.5px;
 }
 </style>

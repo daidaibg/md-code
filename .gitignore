@@ -18,7 +18,7 @@ dist/
 src-tauri/.cargo-check-*/
 src-tauri/target-validation/
 installer/src-tauri/target/
-installer/dist/
+installer/src-tauri/gen/
 release/
 
 # Test and coverage output

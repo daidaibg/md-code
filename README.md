@@ -42,9 +42,9 @@ npm run build
 
 ## 自定义 Windows EXE 安装器
 
-项目中的 `installer/` 是独立的 Vue 3 + Tauri 2 安装器，不使用 MSI，也不使用
-NSIS 的传统“上一步/下一步”界面。安装器包含准备安装、真实进度、安装完成三个状态，
-界面和文案均为简体中文。
+项目中的 `installer/` 使用纯 HTML/CSS/JavaScript 界面和一个精简的 Tauri 2/Rust
+后端，不使用 MSI，也不使用 NSIS 的传统“上一步/下一步”界面。安装器包含准备安装、
+真实进度、安装完成三个状态，不需要单独安装前端依赖或执行前端构建。
 
 开发预览（使用模拟进度，不会写文件或注册表）：
 
@@ -52,10 +52,12 @@ NSIS 的传统“上一步/下一步”界面。安装器包含准备安装、�
 npm run installer:dev
 ```
 
-生成正式安装器：
+生成正式安装器（默认 Tauri 构建入口也会执行这一命令）：
 
 ```bash
 npm run installer:build
+# 或
+npm run tauri:build
 ```
 
 该命令按以下顺序工作：
@@ -63,14 +65,24 @@ npm run installer:build
 1. 以 `--no-bundle` 构建主程序 `md-code.exe`，不会生成 MSI 或 NSIS 包。
 2. 将主程序嵌入自定义安装器并构建安装器自身。
 3. 只复制最终交付文件到 `release/MD Code_0.2.0_x64-setup.exe`。
+4. 构建成功后清理 Rust/Vite 的 release 中间文件，`release` 目录只保留这个安装器。
 
-安装时由 Rust 后端按数据块写入主程序，并把真实的文件写入进度发送给 Vue 页面；
+`.fingerprint`、`build`、`deps`、`.pdb` 等内容只是 Cargo 编译缓存，不是需要发布的文件。
+自动清理可以减少项目占用，但会让下一次正式打包重新编译。
+
+如果只需要构建主程序 EXE、不生成安装器：
+
+```bash
+npm run tauri:build:app
+```
+
+安装时由 Rust 后端按数据块写入主程序，并把真实的文件写入进度发送给 HTML 页面；
 随后创建开始菜单/可选桌面快捷方式，注册 Windows 卸载信息和“打开方式”。安装目录
 内的 `uninstall.exe --uninstall` 负责删除应用文件、快捷方式和对应的当前用户注册表项。
 
 ```text
 installer/
-  src/                    Vue 单页安装界面和三状态切换
+  ui/                     纯 HTML/CSS/JavaScript 单页安装界面
   src-tauri/
     src/lib.rs            文件复制、进度、快捷方式、注册表与卸载
     build.rs              将主程序 EXE 嵌入安装器

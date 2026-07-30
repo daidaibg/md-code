@@ -7,6 +7,7 @@ use std::{
     sync::Mutex,
 };
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_dialog::DialogExt;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -87,6 +88,24 @@ fn get_default_install_dir() -> String {
         .join(APP_NAME)
         .to_string_lossy()
         .into_owned()
+}
+
+#[tauri::command]
+fn choose_install_dir(app: AppHandle, current_path: String) -> Result<Option<String>, String> {
+    let mut dialog = app.dialog().file().set_title("选择 MD Code 安装位置");
+    let current_path = current_path.trim();
+    if !current_path.is_empty() {
+        dialog = dialog.set_directory(current_path);
+    }
+
+    dialog
+        .blocking_pick_folder()
+        .map(|path| {
+            path.into_path()
+                .map(|path| path.to_string_lossy().into_owned())
+                .map_err(|error| format!("无法读取所选目录：{error}"))
+        })
+        .transpose()
 }
 
 #[tauri::command]
@@ -434,6 +453,7 @@ pub fn run() {
         .manage(InstallerState::default())
         .invoke_handler(tauri::generate_handler![
             get_default_install_dir,
+            choose_install_dir,
             install_application,
             launch_installed_application
         ])

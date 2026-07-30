@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>安装 MD Code</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="installer-window">
+      <header class="window-header" data-tauri-drag-region>
+        <div class="window-controls">
+          <button id="minimize-button" class="window-control" type="button" aria-label="最小化" title="最小化">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>
+          </button>
+          <button id="close-button" class="window-control close-control" type="button" aria-label="关闭" title="关闭">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <section id="ready-page" class="installer-page ready-page">
+        <div class="brand-block">
+          <img src="./icon.png" class="app-logo" alt="MD Code Logo" />
+          <h1>MD Code</h1>
+          <p>轻巧、专注的 Markdown 文档编辑器</p>
+        </div>
+
+        <button id="install-button" type="button" class="primary-button install-button">立即安装</button>
+        <p id="error-message" class="error-message" hidden></p>
+
+        <div id="options-panel" class="options-panel">
+          <div id="option-content" class="option-content">
+            <label class="path-label" for="install-path">安装位置</label>
+            <div class="path-control">
+              <input id="install-path" type="text" value="D:\app\MD Code" spellcheck="false" />
+              <button id="folder-button" type="button" class="folder-button" aria-label="选择安装目录" title="选择安装目录">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-15z" />
+                  <path d="M3.5 8.5v-2a2 2 0 0 1 2-2h4l2 2" />
+                </svg>
+              </button>
+            </div>
+            <label class="checkbox-row">
+              <input id="desktop-shortcut" type="checkbox" checked />
+              <span>创建桌面快捷方式</span>
+            </label>
+          </div>
+          <button id="options-button" type="button" class="text-button" aria-expanded="true">收起自定义选项</button>
+        </div>
+      </section>
+
+      <section id="progress-page" class="installer-page progress-page" hidden>
+        <div class="brand-block compact">
+          <img src="./icon.png" class="app-logo" alt="MD Code Logo" />
+          <h1>MD Code</h1>
+        </div>
+        <div class="progress-content" aria-live="polite">
+          <div id="progress-track" class="progress-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="已安装 0%">
+            <div id="progress-value" class="progress-value"></div>
+          </div>
+          <strong id="progress-percent">已安装 0%</strong>
+          <span id="progress-message">正在准备安装…</span>
+        </div>
+      </section>
+
+      <section id="complete-page" class="installer-page complete-page" hidden>
+        <img src="./icon.png" class="app-logo" alt="MD Code Logo" />
+        <h1>MD Code</h1>
+        <h2>安装成功</h2>
+        <p>现在可以开始使用你的 Markdown 编辑器了</p>
+        <label class="checkbox-row launch-checkbox">
+          <input id="launch-after-install" type="checkbox" checked />
+          <span>立即启动应用</span>
+        </label>
+        <button id="finish-button" type="button" class="primary-button finish-button">立即体验</button>
+      </section>
+    </main>
+
+    <script src="./main.js"></script>
+  </body>
+</html>

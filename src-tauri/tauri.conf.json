@@ -14,7 +14,7 @@
       {
         "label": "main",
         "title": "MD Code",
-        "width": 1280,
+        "width": 900,
         "height": 820,
         "minWidth": 900,
         "minHeight": 600,
@@ -35,23 +35,7 @@
     }
   },
   "bundle": {
-    "active": true,
-    "targets": [
-      "nsis"
-    ],
-    "windows": {
-      "nsis": {
-        "languages": [
-          "SimpChinese"
-        ],
-        "displayLanguageSelector": false,
-        "installMode": "currentUser",
-        "installerIcon": "icons/icon.ico",
-        "uninstallerIcon": "icons/icon.ico",
-        "installerHooks": "./windows/nsis-hooks.nsh",
-        "compression": "lzma"
-      }
-    },
+    "active": false,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

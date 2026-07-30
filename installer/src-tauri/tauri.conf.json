@@ -4,12 +4,10 @@
   "version": "0.2.0",
   "identifier": "com.mdcode.installer",
   "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://127.0.0.1:5180",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "frontendDist": "../ui"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "label": "main",

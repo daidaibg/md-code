@@ -1,6 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
+import { useRoute, useRouter } from 'vue-router';
 import AppMenuBar from '@/app/components/AppMenuBar.vue';
 import StatusBar from '@/app/components/StatusBar.vue';
 import UnsavedChangesDialog from '@/document/components/UnsavedChangesDialog.vue';
@@ -12,6 +13,7 @@ import SettingsPage from '@/settings/components/SettingsPage.vue';
 import packageMetadata from '../../package.json';
 import { supportsPreview } from '@/editor/language/languageManager';
 import { useEditorStore } from '@/store/editor';
+import { useSettingsStore } from '@/store/settings';
 import DocumentTabs from '@/tabs/components/DocumentTabs.vue';
 import { useResolvedTheme } from '@/themes/useResolvedTheme';
 import type { EditorMode, SupportedLanguage, TextSelection } from '@/types/editor';
@@ -27,6 +29,9 @@ interface DocumentEditorApi {
 }
 
 const editorStore = useEditorStore();
+const settingsStore = useSettingsStore();
+const route = useRoute();
+const router = useRouter();
 const {
   documents,
   activeDocumentId,
@@ -38,9 +43,10 @@ const {
   title
 } = storeToRefs(editorStore);
 const resolvedTheme = useResolvedTheme(theme);
+const { monaco } = storeToRefs(settingsStore);
 const documentManager = useDocumentManager();
 const documentEditor = ref<DocumentEditorApi>();
-const settingsOpen = ref(false);
+const settingsOpen = computed(() => route.name === 'settings');
 const recoveryEnabled = typeof window !== 'undefined' && 'localStorage' in window;
 const previewSupported = computed(() =>
   activeDocument.value ? supportsPreview(activeDocument.value.language) : false
@@ -72,6 +78,14 @@ function closeActiveDocument(): void {
   if (activeDocument.value) documentManager.requestClose(activeDocument.value.id);
 }
 
+function openSettings(): void {
+  void router.push({ name: 'settings', params: { section: 'appearance' } });
+}
+
+function closeSettings(): void {
+  void router.push({ name: 'editor' });
+}
+
 function onGlobalKeydown(event: KeyboardEvent): void {
   if (documentManager.externalConflict.value) {
     if (event.key === 'Escape' && documentManager.externalDiffOpen.value) {
@@ -86,7 +100,7 @@ function onGlobalKeydown(event: KeyboardEvent): void {
     return;
   }
   if (event.key === 'Escape' && settingsOpen.value) {
-    settingsOpen.value = false;
+    closeSettings();
     return;
   }
   if (!(event.ctrlKey || event.metaKey)) return;
@@ -117,9 +131,13 @@ function onGlobalKeydown(event: KeyboardEvent): void {
 }
 
 watch(
-  title,
-  (value) => {
-    document.title = value === 'MD Code' ? value : `${value} — MD Code`;
+  [title, settingsOpen],
+  ([value, inSettings]) => {
+    document.title = inSettings
+      ? '设置 — MD Code'
+      : value === 'MD Code'
+        ? value
+        : `${value} — MD Code`;
   },
   { immediate: true }
 );
@@ -168,7 +186,7 @@ onBeforeUnmount(() => {
       @set-mode="updateActiveMode"
       @cycle-tab="editorStore.cycleDocument"
       @set-theme="editorStore.setTheme"
-      @open-settings="settingsOpen = true"
+      @open-settings="openSettings"
     />
 
     <DocumentTabs
@@ -189,7 +207,7 @@ onBeforeUnmount(() => {
     />
 
     <div class="application-workspace">
-      <SettingsPage v-if="settingsOpen" @close="settingsOpen = false" />
+      <SettingsPage v-if="settingsOpen" @close="closeSettings" />
       <DocumentEditor
         v-else-if="activeDocument"
         :key="activeDocument.id"
@@ -198,6 +216,7 @@ onBeforeUnmount(() => {
         :theme="resolvedTheme"
         :preview-theme="previewTheme"
         :code-theme="codeTheme"
+        :editor-settings="monaco"
         @update:content="updateActiveContent"
         @update:mode="updateActiveMode"
         @update:cursor="editorStore.updateCursor(activeDocument.id, $event)"
@@ -255,7 +274,7 @@ onBeforeUnmount(() => {
 .application-workspace {
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   background: var(--panel-bg);
 }
 

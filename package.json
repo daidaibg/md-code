@@ -10,9 +10,9 @@
         "preview": "vite preview",
         "tauri": "tauri",
         "tauri:dev": "tauri dev",
-        "tauri:build": "tauri build",
-        "installer:dev": "npm --prefix installer run dev",
-        "installer:frontend:build": "npm --prefix installer run build",
+        "tauri:build": "node scripts/build-installer.mjs",
+        "tauri:build:app": "tauri build --no-bundle",
+        "installer:dev": "node scripts/run-installer-tauri.mjs dev",
         "installer:build": "node scripts/build-installer.mjs"
     },
     "dependencies": {
@@ -29,7 +29,8 @@
         "monaco-editor": "^0.56.0",
         "pinia": "^4.0.2",
         "sortablejs": "^1.15.7",
-        "vue": "^3.5.40"
+        "vue": "^3.5.40",
+        "vue-router": "^4.6.4"
     },
     "devDependencies": {
         "@tauri-apps/cli": "^2.11.4",

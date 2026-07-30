@@ -7,6 +7,7 @@ import MonacoEditor from '@/editor/monaco/MonacoEditor.vue';
 import { previewKindForLanguage, supportsPreview } from '@/editor/language/languageManager';
 import MarkdownPreview from '@/markdown/components/MarkdownPreview.vue';
 import MarkdownToc from '@/markdown/components/MarkdownToc.vue';
+import type { MonacoSettings } from '@/store/settings';
 import type {
   CodeThemeName,
   CursorPosition,
@@ -48,6 +49,7 @@ const props = defineProps<{
   theme: ResolvedTheme;
   previewTheme: PreviewThemeName;
   codeTheme: CodeThemeName;
+  editorSettings: MonacoSettings;
 }>();
 
 const emit = defineEmits<{
@@ -332,6 +334,7 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
           :language="document.language"
           :theme="theme"
           :cursor="document.cursor"
+          :settings="editorSettings"
           @update:model-value="emit('update:content', $event)"
           @cursor-change="emit('update:cursor', $event)"
           @scroll-ratio="setPreviewScrollRatio"
@@ -417,7 +420,7 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
   min-height: 0;
   z-index: 0;
   display: grid;
-  overflow: hidden;
+  overflow: visible;
   isolation: isolate;
   background: var(--panel-bg);
 }
@@ -429,11 +432,15 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
 }
 
 .editor-pane {
-  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  overflow: visible;
   background: var(--editor-bg);
 }
 
 .preview-pane {
+  position: relative;
+  z-index: 0;
   overflow: auto;
   background: var(--preview-canvas-bg);
 }
