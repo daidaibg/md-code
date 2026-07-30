@@ -64,11 +64,18 @@ npm run tauri:build
 
 1. 以 `--no-bundle` 构建主程序 `md-code.exe`，不会生成 MSI 或 NSIS 包。
 2. 将主程序嵌入自定义安装器并构建安装器自身。
-3. 只复制最终交付文件到 `release/MD Code_0.2.0_x64-setup.exe`。
-4. 构建成功后清理 Rust/Vite 的 release 中间文件，`release` 目录只保留这个安装器。
+3. 只复制最终交付文件到 `release/MDCode_0.2.0_x64-setup.exe`。
+4. 构建成功后清理 Vite 中间文件，`release` 目录只保留这个安装器。
 
 `.fingerprint`、`build`、`deps`、`.pdb` 等内容只是 Cargo 编译缓存，不是需要发布的文件。
-自动清理可以减少项目占用，但会让下一次正式打包重新编译。
+主程序和安装器的 Cargo 缓存分别保存在各自的 `src-tauri/target` 中，这两个目录
+都不会提交到 Git。缓存会加速后续编译；第一次构建或手动清理后仍需要完整编译一次。
+
+需要手动释放 Cargo 缓存空间时执行：
+
+```bash
+npm run clean:cargo
+```
 
 如果只需要构建主程序 EXE、不生成安装器：
 
@@ -89,7 +96,7 @@ installer/
 scripts/
   build-installer.mjs     主程序与安装器的串行构建入口
 release/
-  MD Code_0.2.0_x64-setup.exe
+  MDCode_0.2.0_x64-setup.exe
 ```
 
 ## 分层

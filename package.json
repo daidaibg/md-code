@@ -13,7 +13,8 @@
         "tauri:build": "node scripts/build-installer.mjs",
         "tauri:build:app": "tauri build --no-bundle",
         "installer:dev": "node scripts/run-installer-tauri.mjs dev",
-        "installer:build": "node scripts/build-installer.mjs"
+        "installer:build": "node scripts/build-installer.mjs",
+        "clean:cargo": "node scripts/clean-cargo-cache.mjs"
     },
     "dependencies": {
         "@mdit/plugin-katex": "^1.0.1",

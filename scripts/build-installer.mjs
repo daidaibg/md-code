@@ -72,6 +72,11 @@ rmSync(resolve(rootDir, 'src-tauri', 'target', 'release', 'bundle'), {
 console.log('[2/5] 构建 MD Code 主程序（不生成 NSIS/MSI）');
 run(['run', 'tauri', '--', 'build', '--no-bundle'], rootDir);
 
+const mainExecutable = resolve(rootDir, 'src-tauri', 'target', 'release', 'md-code.exe');
+if (!existsSync(mainExecutable)) {
+  throw new Error(`主程序构建完成但未找到输出文件：${mainExecutable}`);
+}
+
 console.log('[3/5] 构建自定义中文安装器（单个 EXE）');
 runTauri(['build', '--no-bundle'], resolve(rootDir, 'installer'));
 
@@ -90,7 +95,7 @@ if (!existsSync(source)) {
 const releaseDir = resolve(rootDir, 'release');
 const destination = resolve(
   releaseDir,
-  `MD Code_${packageMetadata.version}_x64-setup.exe`
+  `MDCode_${packageMetadata.version}_x64-setup.exe`
 );
 rmSync(releaseDir, { recursive: true, force: true });
 mkdirSync(releaseDir, { recursive: true });
@@ -98,13 +103,12 @@ copyFileSync(source, destination);
 
 console.log(`[4/5] 已生成自定义安装器：${destination}`);
 
-console.log('[5/5] 清理 Rust/Vite 打包中间文件');
+console.log('[5/5] 清理 Vite 打包中间文件');
 for (const generatedPath of [
-  resolve(rootDir, 'src-tauri', 'target', 'release'),
-  resolve(rootDir, 'installer', 'src-tauri', 'target', 'release'),
   resolve(rootDir, 'dist')
 ]) {
   rmSync(generatedPath, { recursive: true, force: true });
 }
 
 console.log(`交付文件（仅此一个）：${destination}`);
+console.log('Cargo 编译缓存已保留在两个 src-tauri/target 目录中');
