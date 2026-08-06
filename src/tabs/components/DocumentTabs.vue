@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import FileTypeIcon from '@/components/icons/FileTypeIcon.vue';
 import ToolbarIcon from '@/components/icons/ToolbarIcon.vue';
 import { TabDragManager } from '@/tabs/TabDragManager';
@@ -19,6 +19,7 @@ const emit = defineEmits<{
   'save-as': [id: string];
   reveal: [id: string];
   'copy-path': [id: string];
+  rename: [id: string];
   close: [id: string];
   'close-others': [id: string];
   'close-left': [id: string];
@@ -30,6 +31,7 @@ type ContextAction =
   | 'save-as'
   | 'reveal'
   | 'copy-path'
+  | 'rename'
   | 'close'
   | 'close-others'
   | 'close-left'
@@ -40,6 +42,10 @@ const contextMenuRoot = ref<HTMLElement>();
 const contextDocumentId = ref<string | null>(null);
 const contextMenuX = ref(0);
 const contextMenuY = ref(0);
+const hasHorizontalOverflow = ref(false);
+const scrollbarThumbWidth = ref(0);
+const scrollbarThumbOffset = ref(0);
+const scrollbarDragging = ref(false);
 const contextDocument = computed(
   () => props.documents.find((document) => document.id === contextDocumentId.value) ?? null
 );
@@ -56,6 +62,9 @@ const contextMenuStyle = computed(() => ({
   top: `${contextMenuY.value}px`
 }));
 let tabDragManager: TabDragManager | undefined;
+let tabsResizeObserver: ResizeObserver | undefined;
+let scrollbarDragStartX = 0;
+let scrollbarDragStartLeft = 0;
 
 const duplicateNames = computed(() => {
   const counts = new Map<string, number>();
@@ -66,12 +75,15 @@ const duplicateNames = computed(() => {
   return counts;
 });
 
-function isDuplicate(document: EditorDocument): boolean {
-  return (duplicateNames.value.get(document.filename.toLocaleLowerCase()) ?? 0) > 1;
+function shouldShowParentDirectory(document: EditorDocument): boolean {
+  return (
+    Boolean(document.path) &&
+    (duplicateNames.value.get(document.filename.toLocaleLowerCase()) ?? 0) > 1
+  );
 }
 
 function parentDirectory(document: EditorDocument): string {
-  if (!document.path) return '未保存';
+  if (!document.path) return '';
   const parts = document.path.split(/[\\/]/u).filter(Boolean);
   parts.pop();
   return parts.pop() ?? document.path;
@@ -110,6 +122,7 @@ function runContextAction(action: ContextAction): void {
   else if (action === 'save-as') emit('save-as', document.id);
   else if (action === 'reveal') emit('reveal', document.id);
   else if (action === 'copy-path') emit('copy-path', document.id);
+  else if (action === 'rename') emit('rename', document.id);
   else if (action === 'close') emit('close', document.id);
   else if (action === 'close-others') emit('close-others', document.id);
   else if (action === 'close-left') emit('close-left', document.id);
@@ -124,12 +137,117 @@ function onDocumentKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') closeContextMenu();
 }
 
+function updateTabsScrollbar(): void {
+  const tabs = tabsRoot.value;
+  if (!tabs) return;
+
+  const { clientWidth, scrollLeft, scrollWidth } = tabs;
+  hasHorizontalOverflow.value = scrollWidth > clientWidth + 1;
+  if (!hasHorizontalOverflow.value) {
+    scrollbarThumbWidth.value = 0;
+    scrollbarThumbOffset.value = 0;
+    return;
+  }
+
+  const thumbWidth = Math.max(36, (clientWidth / scrollWidth) * clientWidth);
+  const availableTrack = Math.max(0, clientWidth - thumbWidth);
+  const availableScroll = Math.max(1, scrollWidth - clientWidth);
+  scrollbarThumbWidth.value = thumbWidth;
+  scrollbarThumbOffset.value = (scrollLeft / availableScroll) * availableTrack;
+}
+
+const scrollbarThumbStyle = computed(() => ({
+  width: `${scrollbarThumbWidth.value}px`,
+  transform: `translateX(${scrollbarThumbOffset.value}px)`
+}));
+
+function onTabsScroll(): void {
+  closeContextMenu();
+  updateTabsScrollbar();
+}
+
+async function revealActiveTab(): Promise<void> {
+  await nextTick();
+  const tabs = tabsRoot.value;
+  if (!tabs) return;
+
+  const activeTab = [...tabs.querySelectorAll<HTMLElement>('.document-tab')].find(
+    (tab) => tab.dataset.documentId === props.activeId
+  );
+  if (!activeTab) return;
+
+  const edgePadding = 8;
+  const visibleLeft = tabs.scrollLeft;
+  const visibleRight = visibleLeft + tabs.clientWidth;
+  const tabLeft = activeTab.offsetLeft;
+  const tabRight = tabLeft + activeTab.offsetWidth;
+
+  if (tabLeft < visibleLeft + edgePadding) {
+    tabs.scrollTo({ left: Math.max(0, tabLeft - edgePadding), behavior: 'smooth' });
+  } else if (tabRight > visibleRight - edgePadding) {
+    tabs.scrollTo({
+      left: tabRight - tabs.clientWidth + edgePadding,
+      behavior: 'smooth'
+    });
+  }
+}
+
+function onScrollbarPointerdown(event: PointerEvent): void {
+  const tabs = tabsRoot.value;
+  const thumb = event.currentTarget as HTMLElement;
+  if (!tabs || event.button !== 0) return;
+
+  event.preventDefault();
+  scrollbarDragging.value = true;
+  scrollbarDragStartX = event.clientX;
+  scrollbarDragStartLeft = tabs.scrollLeft;
+  thumb.setPointerCapture(event.pointerId);
+}
+
+function onScrollbarPointermove(event: PointerEvent): void {
+  const tabs = tabsRoot.value;
+  if (!tabs || !scrollbarDragging.value) return;
+
+  const trackRange = tabs.clientWidth - scrollbarThumbWidth.value;
+  const scrollRange = tabs.scrollWidth - tabs.clientWidth;
+  if (trackRange <= 0 || scrollRange <= 0) return;
+  tabs.scrollLeft = scrollbarDragStartLeft +
+    (event.clientX - scrollbarDragStartX) * (scrollRange / trackRange);
+}
+
+function onScrollbarPointerup(event: PointerEvent): void {
+  if (!scrollbarDragging.value) return;
+  scrollbarDragging.value = false;
+  const thumb = event.currentTarget as HTMLElement;
+  if (thumb.hasPointerCapture(event.pointerId)) thumb.releasePointerCapture(event.pointerId);
+}
+
+function onTabsWheel(event: WheelEvent): void {
+  const tabs = tabsRoot.value;
+  if (!tabs || tabs.scrollWidth <= tabs.clientWidth) return;
+
+  const rawDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  if (rawDelta === 0) return;
+
+  const deltaScale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+    ? 32
+    : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+      ? tabs.clientWidth
+      : 1;
+  event.preventDefault();
+  tabs.scrollLeft += rawDelta * deltaScale;
+  closeContextMenu();
+}
+
 onMounted(() => {
   if (tabsRoot.value) {
     tabDragManager = new TabDragManager(tabsRoot.value, {
       onReorder: ({ documentId, oldIndex, newIndex }) =>
         emit('reorder', documentId, oldIndex, newIndex)
     });
+    tabsResizeObserver = new ResizeObserver(updateTabsScrollbar);
+    tabsResizeObserver.observe(tabsRoot.value);
+    updateTabsScrollbar();
   }
   document.addEventListener('pointerdown', onDocumentPointerdown);
   document.addEventListener('keydown', onDocumentKeydown);
@@ -140,50 +258,89 @@ onMounted(() => {
 onBeforeUnmount(() => {
   tabDragManager?.destroy();
   tabDragManager = undefined;
+  tabsResizeObserver?.disconnect();
+  tabsResizeObserver = undefined;
   document.removeEventListener('pointerdown', onDocumentPointerdown);
   document.removeEventListener('keydown', onDocumentKeydown);
   window.removeEventListener('resize', closeContextMenu);
   window.removeEventListener('blur', closeContextMenu);
 });
+
+watch(
+  () =>
+    props.documents
+      .map(
+        (document) =>
+          `${document.id}:${document.filename}:${document.path ?? ''}:${document.modified}`
+      )
+      .join('|'),
+  () => void nextTick(updateTabsScrollbar)
+);
+
+watch(() => props.activeId, () => void revealActiveTab(), { immediate: true });
 </script>
 
 <template>
-  <nav
-    ref="tabsRoot"
-    class="document-tabs"
-    aria-label="打开的文档"
-    @scroll.passive="closeContextMenu"
-  >
-    <button
-      v-for="document in documents"
-      :key="document.id"
-      type="button"
-      class="document-tab"
-      :data-document-id="document.id"
-      :class="{ active: document.id === activeId }"
-      :title="document.path ?? document.filename"
-      @click="emit('activate', document.id)"
-      @contextmenu.prevent.stop="openContextMenu($event, document)"
-      @auxclick.middle.prevent="emit('close', document.id)"
-    >
-      <FileTypeIcon :language="document.language" :filename="document.filename" />
-      <span class="tab-label">
-        <span class="filename">{{ document.filename }}</span>
-        <span v-if="isDuplicate(document)" class="parent-name">{{ parentDirectory(document) }}</span>
-      </span>
-      <span v-if="document.modified" class="modified-dot" title="未保存" aria-label="未保存" />
-      <span
-        class="close-button"
-        role="button"
-        tabindex="0"
-        :aria-label="`关闭 ${document.filename}`"
-        @click.stop="emit('close', document.id)"
-        @keydown.enter.stop="emit('close', document.id)"
-        @keydown.space.prevent.stop="emit('close', document.id)"
+  <div class="document-tabs-shell" :class="{ 'scrollbar-dragging': scrollbarDragging }">
+    <div class="tabs-viewport">
+      <nav
+        ref="tabsRoot"
+        class="document-tabs"
+        aria-label="打开的文档"
+        @scroll.passive="onTabsScroll"
+        @wheel="onTabsWheel"
       >
-        <ToolbarIcon name="close" />
-      </span>
-    </button>
+        <button
+          v-for="document in documents"
+          :key="document.id"
+          type="button"
+          class="document-tab"
+          :data-document-id="document.id"
+          :class="{ active: document.id === activeId }"
+          :title="document.path ?? document.filename"
+          @click="emit('activate', document.id)"
+          @contextmenu.prevent.stop="openContextMenu($event, document)"
+          @auxclick.middle.prevent="emit('close', document.id)"
+        >
+          <FileTypeIcon :language="document.language" :filename="document.filename" />
+          <span class="tab-label">
+            <span class="filename">{{ document.filename }}</span>
+            <span v-if="shouldShowParentDirectory(document)" class="parent-name">
+              {{ parentDirectory(document) }}
+            </span>
+          </span>
+          <span
+            v-if="document.modified || !document.path"
+            class="modified-dot"
+            title="未保存"
+            aria-label="未保存"
+          />
+          <span
+            class="close-button"
+            role="button"
+            tabindex="0"
+            :aria-label="`关闭 ${document.filename}`"
+            @click.stop="emit('close', document.id)"
+            @keydown.enter.stop="emit('close', document.id)"
+            @keydown.space.prevent.stop="emit('close', document.id)"
+          >
+            <ToolbarIcon name="close" />
+          </span>
+        </button>
+      </nav>
+
+      <div v-show="hasHorizontalOverflow" class="tabs-scrollbar" aria-hidden="true">
+        <span
+          class="tabs-scrollbar-thumb"
+          :style="scrollbarThumbStyle"
+          @pointerdown="onScrollbarPointerdown"
+          @pointermove="onScrollbarPointermove"
+          @pointerup="onScrollbarPointerup"
+          @pointercancel="onScrollbarPointerup"
+        />
+      </div>
+    </div>
+
     <button
       type="button"
       class="new-document-button"
@@ -194,7 +351,7 @@ onBeforeUnmount(() => {
     >
       <ToolbarIcon name="new-file" />
     </button>
-  </nav>
+  </div>
 
   <section
     v-if="contextDocument"
@@ -227,6 +384,16 @@ onBeforeUnmount(() => {
       <ToolbarIcon name="save-as" />
       <span>另存为</span>
       <kbd>Ctrl+Shift+S</kbd>
+    </button>
+    <button
+      type="button"
+      class="context-menu-item"
+      role="menuitem"
+      :disabled="busy"
+      @click="runContextAction('rename')"
+    >
+      <ToolbarIcon name="file" />
+      <span>重命名</span>
     </button>
     <div class="context-menu-separator" role="separator" />
     <button
@@ -295,20 +462,77 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="scss">
-.document-tabs {
+.document-tabs-shell {
   min-width: 0;
   height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--tabs-bg);
+}
+
+.tabs-viewport {
+  position: relative;
+  min-width: 0;
+  height: 33px;
+  overflow: hidden;
+}
+
+.document-tabs {
+  min-width: 0;
+  width: 100%;
+  height: 33px;
   display: flex;
   align-items: stretch;
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid var(--border-color);
   background: var(--tabs-bg);
-  scrollbar-width: thin;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+}
+
+.tabs-scrollbar {
+  position: absolute;
+  z-index: 8;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.tabs-viewport:hover .tabs-scrollbar,
+.document-tabs-shell.scrollbar-dragging .tabs-scrollbar {
+  opacity: 1;
+}
+
+.tabs-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 58%, transparent);
+  cursor: default;
+  touch-action: none;
+
+  &:hover,
+  .scrollbar-dragging & {
+    height: 3px;
+    background: color-mix(in srgb, var(--text-muted) 74%, transparent);
+  }
 }
 
 .document-tab {
   position: relative;
+  flex: 0 0 auto;
   min-width: 122px;
   max-width: 250px;
   height: 33px;
@@ -425,9 +649,9 @@ onBeforeUnmount(() => {
   flex: 0 0 34px;
   padding: 0;
   border: 0;
-  border-right: 1px solid var(--border-color);
+  border-left: 1px solid var(--border-color);
   color: var(--text-muted);
-  background: transparent;
+  background: var(--tabs-bg);
   cursor: default;
 
   &:hover:not(:disabled),

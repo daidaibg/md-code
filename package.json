@@ -1,7 +1,7 @@
 {
     "name": "md-code",
     "private": true,
-    "version": "0.2.0",
+    "version": "0.3.0",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -10,10 +10,8 @@
         "preview": "vite preview",
         "tauri": "tauri",
         "tauri:dev": "tauri dev",
-        "tauri:build": "node scripts/build-installer.mjs",
-        "tauri:build:app": "tauri build --no-bundle",
-        "installer:dev": "node scripts/run-installer-tauri.mjs dev",
-        "installer:build": "node scripts/build-installer.mjs",
+        "tauri:build": "node scripts/build-release.mjs",
+        "release:github": "node scripts/publish-github-release.mjs",
         "clean:cargo": "node scripts/clean-cargo-cache.mjs"
     },
     "dependencies": {
@@ -21,6 +19,8 @@
         "@mdit/plugin-tasklist": "^1.0.1",
         "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-dialog": "^2.7.2",
+        "@tauri-apps/plugin-process": "^2.3.1",
+        "@tauri-apps/plugin-updater": "^2.10.1",
         "@vavt/markdown-theme": "^5.0.2",
         "dompurify": "^3.4.12",
         "highlight.js": "^11.11.1",

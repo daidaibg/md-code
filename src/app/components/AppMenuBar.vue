@@ -6,6 +6,7 @@ import { detectLanguage, languageLabel } from '@/editor/language/languageManager
 import { isTauriRuntime } from '@/filesystem/fileSystemService';
 import appLogoUrl from '../../../src-tauri/icons/32x32.png';
 import type { EditorMode, EditorTheme, RecentFile, SupportedLanguage } from '@/types/editor';
+import type { ApplicationUpdateStatus } from '@/update/useApplicationUpdater';
 
 const props = defineProps<{
   title: string;
@@ -16,6 +17,9 @@ const props = defineProps<{
   previewSupported: boolean;
   recentFiles: RecentFile[];
   appVersion: string;
+  updateStatus: ApplicationUpdateStatus;
+  updateVersion: string;
+  updateProgress?: number;
 }>();
 
 const emit = defineEmits<{
@@ -36,6 +40,7 @@ const emit = defineEmits<{
   'cycle-tab': [direction: 1 | -1];
   'set-theme': [theme: EditorTheme];
   'open-settings': [];
+  'install-update': [];
 }>();
 
 type MenuId = 'file' | 'edit' | 'search' | 'view' | 'settings' | 'help';
@@ -164,6 +169,32 @@ onBeforeUnmount(() => {
       @click.stop="toggleMenu(menu.id, $event)"
     >
       {{ menu.label }}
+    </button>
+
+    <div
+      v-if="updateStatus === 'downloading'"
+      class="update-progress"
+      :title="`正在下载 MD Code v${updateVersion}`"
+      aria-live="polite"
+    >
+      <span>{{ updateProgress === undefined ? '正在下载更新' : `更新 ${updateProgress}%` }}</span>
+      <span class="update-progress-track" aria-hidden="true">
+        <span
+          class="update-progress-value"
+          :class="{ indeterminate: updateProgress === undefined }"
+          :style="updateProgress === undefined ? undefined : { width: updateProgress + '%' }"
+        />
+      </span>
+    </div>
+    <button
+      v-else-if="updateStatus === 'ready' || updateStatus === 'installing'"
+      type="button"
+      class="install-update"
+      :disabled="updateStatus === 'installing'"
+      :title="`MD Code v${updateVersion} 已下载`"
+      @click.stop="emit('install-update')"
+    >
+      {{ updateStatus === 'installing' ? '正在更新…' : '立即更新' }}
     </button>
 
     <div
@@ -380,6 +411,63 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   object-fit: contain;
   pointer-events: none;
+}
+
+.update-progress,
+.install-update {
+  width: 126px;
+  height: 26px;
+  flex: 0 0 126px;
+  margin-left: 7px;
+  border: 0;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.update-progress {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 0 8px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.update-progress-track {
+  position: relative;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.update-progress-value {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 120ms linear;
+
+  &.indeterminate {
+    width: 42%;
+    animation: update-progress-slide 1.1s ease-in-out infinite;
+  }
+}
+
+.install-update {
+  padding: 0 10px;
+  color: var(--button-primary-text, #fff);
+  background: var(--accent);
+  cursor: pointer;
+
+  &:hover:not(:disabled) { filter: brightness(1.08); }
+  &:disabled { cursor: default; opacity: 0.7; }
+}
+
+@keyframes update-progress-slide {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(250%); }
 }
 
 .menu-title {

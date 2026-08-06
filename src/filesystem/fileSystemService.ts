@@ -126,6 +126,11 @@ export async function writeBinaryFile(path: string, bytes: Uint8Array): Promise<
   await invoke('write_binary_file', { path, bytes: Array.from(bytes) });
 }
 
+export async function renameTextFile(path: string, newFilename: string): Promise<string> {
+  if (!isTauriRuntime()) throw new Error('浏览器预览模式无法重命名本地文件');
+  return invoke<string>('rename_text_file', { path, newFilename });
+}
+
 export async function revealInFileManager(path: string): Promise<void> {
   if (!isTauriRuntime()) throw new Error('浏览器预览模式无法打开文件资源管理器');
   await invoke('reveal_in_file_manager', { path });

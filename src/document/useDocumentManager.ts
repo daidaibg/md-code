@@ -3,6 +3,7 @@ import {
   copyTextToClipboard,
   openTextFiles,
   readTextFile,
+  renameTextFile,
   revealInFileManager,
   saveTextFile,
   showDesktopMessage
@@ -40,6 +41,7 @@ export function useDocumentManager() {
   const pendingCloseId = ref<string | null>(null);
   const pendingCloseIds = ref<string[]>([]);
   const pendingCloseAll = ref(false);
+  const pendingRenameId = ref<string | null>(null);
   const externalConflicts = ref<ExternalFileConflict[]>([]);
   const externalDiffOpen = ref(false);
   const workspaceChangeVersion = ref(0);
@@ -49,6 +51,9 @@ export function useDocumentManager() {
 
   const pendingCloseDocument = computed(
     () => store.documents.find((item) => item.id === pendingCloseId.value) ?? null
+  );
+  const pendingRenameDocument = computed(
+    () => store.documents.find((item) => item.id === pendingRenameId.value) ?? null
   );
   const externalConflict = computed(() => externalConflicts.value[0] ?? null);
   const workspaceDirectory = computed(() =>
@@ -261,6 +266,46 @@ export function useDocumentManager() {
     await run(() => copyTextToClipboard(document.path!), '复制文件路径失败');
   }
 
+  function requestRename(id: string): void {
+    if (!store.documents.some((document) => document.id === id)) return;
+    errorMessage.value = null;
+    store.activateDocument(id);
+    pendingRenameId.value = id;
+  }
+
+  function cancelRename(): void {
+    pendingRenameId.value = null;
+  }
+
+  async function renameDocument(newFilename: string): Promise<void> {
+    const id = pendingRenameId.value;
+    const document = store.documents.find((item) => item.id === id);
+    if (!id || !document || busy.value) return;
+
+    const filename = newFilename.trim();
+    if (!filename || filename === document.filename) {
+      cancelRename();
+      return;
+    }
+
+    busy.value = true;
+    errorMessage.value = null;
+    try {
+      const renamedPath = document.path
+        ? await renameTextFile(document.path, filename)
+        : document.path;
+      store.renameDocument(id, filename, renamedPath);
+      ignoredDiskContents.delete(id);
+      removeExternalConflict(id);
+      pendingRenameId.value = null;
+      await syncFileWatcher();
+    } catch (error) {
+      errorMessage.value = `重命名失败：${errorText(error)}`;
+    } finally {
+      busy.value = false;
+    }
+  }
+
   function resetPendingCloseState(): void {
     pendingCloseId.value = null;
     pendingCloseIds.value = [];
@@ -393,6 +438,7 @@ export function useDocumentManager() {
     errorMessage,
     pendingCloseDocument,
     pendingCloseAll,
+    pendingRenameDocument,
     externalConflict,
     externalDiffOpen,
     workspaceChangeVersion,
@@ -404,6 +450,9 @@ export function useDocumentManager() {
     saveActive,
     revealDocument,
     copyDocumentPath,
+    requestRename,
+    cancelRename,
+    renameDocument,
     requestClose,
     requestCloseOthers,
     requestCloseLeft,

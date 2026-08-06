@@ -16,6 +16,8 @@ export default defineConfig({
     exclude: ['monaco-editor']
   },
   server: {
+    port: 608,
+    strictPort: true,
     watch: {
       ignored: ['**/src-tauri/**']
     }

@@ -95,7 +95,9 @@ export const useEditorStore = defineStore('editor', () => {
     const document = createUntitled(untitledCount);
     document.language = language;
     document.mode = defaultModeForLanguage(language);
-    documents.value.push(document);
+    const activeIndex = documents.value.findIndex((item) => item.id === activeDocumentId.value);
+    const insertIndex = activeIndex >= 0 ? activeIndex + 1 : documents.value.length;
+    documents.value.splice(insertIndex, 0, document);
     savedContents.value[document.id] = '';
     activeDocumentId.value = document.id;
     return document.id;
@@ -182,6 +184,29 @@ export const useEditorStore = defineStore('editor', () => {
     document.modified = false;
     if (document.path && previousPath?.toLocaleLowerCase() !== document.path.toLocaleLowerCase()) {
       recordRecent(document.path, document.filename);
+    }
+  }
+
+  function renameDocument(id: string, filename: string, path?: string | null): void {
+    const document = documents.value.find((item) => item.id === id);
+    if (!document) return;
+
+    const previousPath = document.path;
+    const previousLanguage = document.language;
+    document.filename = filename;
+    if (path !== undefined) document.path = path;
+    document.language = detectLanguage(filename);
+    if (document.language !== previousLanguage) {
+      document.mode = defaultModeForLanguage(document.language);
+    }
+
+    if (
+      previousPath &&
+      document.path &&
+      previousPath.toLocaleLowerCase() !== document.path.toLocaleLowerCase()
+    ) {
+      removeRecent(previousPath);
+      recordRecent(document.path, filename);
     }
   }
 
@@ -333,6 +358,7 @@ export const useEditorStore = defineStore('editor', () => {
     setMode,
     setLanguage,
     markSaved,
+    renameDocument,
     closeDocument,
     cycleDocument,
     reorderDocument,

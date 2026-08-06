@@ -51,7 +51,7 @@ export class TabDragManager {
         put: true
       },
       draggable: TAB_SELECTOR,
-      filter: '.close-button, .new-document-button',
+      filter: '.close-button',
       preventOnFilter: false,
       dataIdAttr: 'data-document-id',
       direction: 'horizontal',
@@ -85,10 +85,9 @@ export class TabDragManager {
         tab
       ])
     );
-    const trailingControl = this.root.querySelector<HTMLElement>('.new-document-button');
     for (const documentId of order) {
       const tab = tabs.get(documentId);
-      if (tab) this.root.insertBefore(tab, trailingControl);
+      if (tab) this.root.append(tab);
     }
   }
 
@@ -105,16 +104,8 @@ export class TabDragManager {
   private handleMove(event: MoveEvent, originalEvent: Event): void {
     this.clearDropIndicator();
 
-    let relatedTab = event.related.matches(TAB_SELECTOR) ? event.related : null;
-    let insertAfter = event.willInsertAfter === true;
-
-    if (!relatedTab && event.related.matches('.new-document-button')) {
-      const tabs = [...this.root.querySelectorAll<HTMLElement>(TAB_SELECTOR)].filter(
-        (tab) => tab !== event.dragged
-      );
-      relatedTab = tabs.at(-1) ?? null;
-      insertAfter = true;
-    }
+    const relatedTab = event.related.matches(TAB_SELECTOR) ? event.related : null;
+    const insertAfter = event.willInsertAfter === true;
 
     if (relatedTab && relatedTab !== event.dragged) {
       relatedTab.classList.add(insertAfter ? TAB_DROP_AFTER_CLASS : TAB_DROP_BEFORE_CLASS);

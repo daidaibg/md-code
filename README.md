@@ -40,63 +40,64 @@ npm run typecheck
 npm run build
 ```
 
-## 自定义 Windows EXE 安装器
+## Windows 安装器
 
-项目中的 `installer/` 使用纯 HTML/CSS/JavaScript 界面和一个精简的 Tauri 2/Rust
-后端，不使用 MSI，也不使用 NSIS 的传统“上一步/下一步”界面。安装器包含准备安装、
-真实进度、安装完成三个状态，不需要单独安装前端依赖或执行前端构建。
+项目使用 Tauri 2 自带的 NSIS 安装器，不再维护独立的自定义安装程序。安装器使用
+简体中文并按当前用户安装，文件关联等 Windows 安装钩子继续由
+`src-tauri/windows/nsis-hooks.nsh` 提供。
 
-开发预览（使用模拟进度，不会写文件或注册表）：
-
-```bash
-npm run installer:dev
-```
-
-生成正式安装器（默认 Tauri 构建入口也会执行这一命令）：
+生成正式安装器：
 
 ```bash
-npm run installer:build
-# 或
 npm run tauri:build
 ```
 
-该命令按以下顺序工作：
+安装包由 Tauri 输出到 `src-tauri/target/release/bundle/nsis/`。构建脚本会以
+`package.json` 的版本为准，同时生成：
 
-1. 以 `--no-bundle` 构建主程序 `md-code.exe`，不会生成 MSI 或 NSIS 包。
-2. 将主程序嵌入自定义安装器并构建安装器自身。
-3. 只复制最终交付文件到 `release/MDCode_0.2.0_x64-setup.exe`。
+- `MDCode_<版本>_x64-setup.exe`
+- `MDCode_<版本>_x64-setup.exe.sig`
+- `latest.json`
+
+## 自动更新与 GitHub 发版
+
+应用启动后会在后台直接读取下面的 GitHub Release 静态文件，不调用
+`api.github.com`：
+
+```text
+https://github.com/daidaibg/md-code/releases/latest/download/latest.json
+```
+
+没有新版本或查询失败时不会显示任何提示。发现新版本后会在顶部菜单右侧自动显示
+下载进度，下载完成后显示“立即更新”。点击更新时会先处理未保存文件，然后静默安装
+并重启到新版本。
+
+首次使用前安装并登录 GitHub CLI：
+
+```bash
+gh auth login
+```
+
+确认 `package.json` 中的版本正确后，一条命令完成构建、签名、生成 `latest.json`
+以及创建 GitHub Release：
+
+```bash
+npm run release:github
+```
+
+更新签名私钥位于本机的 `src-tauri/updater.key`，已经被 Git 忽略。必须单独安全备份，
+不能提交或公开；如果丢失，已经安装的旧版本将无法验证以后发布的更新。
+构建脚本会安全读取该文件并通过 `TAURI_SIGNING_PRIVATE_KEY` 传给 Tauri；CI 环境也可以
+直接设置同名环境变量，而不在工作区创建私钥文件。
 
 `.fingerprint`、`build`、`deps`、`.pdb` 等内容只是 Cargo 编译缓存，不是需要发布的文件。
-主程序和安装器的 Cargo 缓存分别保存在各自的 `src-tauri/target` 中，这两个目录
-都不会提交到 Git，也不会在打包后自动删除。缓存会加速后续编译；第一次构建或手动
-清理后仍需要完整编译一次。
+Cargo 缓存保存在 `src-tauri/target` 中，不会提交到 Git，也不会在打包后自动删除。
+缓存会加速后续编译；第一次构建或手动清理后仍需要完整编译一次。
 
 需要手动释放 Cargo 缓存空间时执行：
 
 ```bash
 npm run clean:cargo
-```
-
-如果只需要构建主程序 EXE、不生成安装器：
-
-```bash
-npm run tauri:build:app
-```
-
-安装时由 Rust 后端按数据块写入主程序，并把真实的文件写入进度发送给 HTML 页面；
-随后创建开始菜单/可选桌面快捷方式，注册 Windows 卸载信息和“打开方式”。安装目录
-内的 `uninstall.exe --uninstall` 负责删除应用文件、快捷方式和对应的当前用户注册表项。
-
-```text
-installer/
-  ui/                     纯 HTML/CSS/JavaScript 单页安装界面
-  src-tauri/
-    src/lib.rs            文件复制、进度、快捷方式、注册表与卸载
-    build.rs              将主程序 EXE 嵌入安装器
-scripts/
-  build-installer.mjs     主程序与安装器的串行构建入口
-release/
-  MDCode_0.2.0_x64-setup.exe
 ```
 
 ## 分层

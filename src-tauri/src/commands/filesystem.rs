@@ -24,6 +24,42 @@ pub fn write_binary_file(path: String, bytes: Vec<u8>) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn rename_text_file(path: String, new_filename: String) -> Result<String, String> {
+    let source = Path::new(&path);
+    if !source.is_file() {
+        return Err("原文件不存在，无法重命名".to_string());
+    }
+
+    let filename = Path::new(new_filename.trim());
+    if filename.as_os_str().is_empty()
+        || filename.components().count() != 1
+        || !matches!(
+            filename.components().next(),
+            Some(std::path::Component::Normal(_))
+        )
+    {
+        return Err("文件名无效，请不要包含路径分隔符".to_string());
+    }
+
+    let parent = source
+        .parent()
+        .ok_or_else(|| "无法读取文件所在目录".to_string())?;
+    let target = parent.join(filename);
+    if target.exists() {
+        let same_file = fs::canonicalize(source)
+            .ok()
+            .zip(fs::canonicalize(&target).ok())
+            .is_some_and(|(left, right)| left == right);
+        if !same_file {
+            return Err("同一目录中已经存在同名文件".to_string());
+        }
+    }
+
+    fs::rename(source, &target).map_err(|error| format!("重命名文件失败：{error}"))?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 pub fn reveal_in_file_manager(path: String) -> Result<(), String> {
     let target = Path::new(&path);
     if !target.exists() {

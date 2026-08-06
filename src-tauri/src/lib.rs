@@ -3,7 +3,7 @@ mod file_watcher;
 mod startup_files;
 
 use commands::filesystem::{
-    read_text_file, reveal_in_file_manager, write_binary_file, write_text_file,
+    read_text_file, rename_text_file, reveal_in_file_manager, write_binary_file, write_text_file,
 };
 use file_watcher::{sync_file_watcher, FileWatcherState};
 use startup_files::{initial_open_paths, paths_from_args};
@@ -31,6 +31,8 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             app.manage(FileWatcherState::new(app.handle().clone())?);
             if cfg!(debug_assertions) {
@@ -46,6 +48,7 @@ pub fn run() {
             read_text_file,
             write_text_file,
             write_binary_file,
+            rename_text_file,
             reveal_in_file_manager,
             initial_open_paths,
             sync_file_watcher,

@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router';
 import AppMenuBar from '@/app/components/AppMenuBar.vue';
 import StatusBar from '@/app/components/StatusBar.vue';
 import UnsavedChangesDialog from '@/document/components/UnsavedChangesDialog.vue';
+import RenameDocumentDialog from '@/document/components/RenameDocumentDialog.vue';
 import ExternalFileConflictDialog from '@/document/components/ExternalFileConflictDialog.vue';
 import { useDocumentManager } from '@/document/useDocumentManager';
 import { useDesktopWindow } from '@/app/useDesktopWindow';
@@ -16,6 +17,7 @@ import { useEditorStore } from '@/store/editor';
 import { useSettingsStore } from '@/store/settings';
 import DocumentTabs from '@/tabs/components/DocumentTabs.vue';
 import { useResolvedTheme } from '@/themes/useResolvedTheme';
+import { useApplicationUpdater } from '@/update/useApplicationUpdater';
 import type { EditorMode, SupportedLanguage, TextSelection } from '@/types/editor';
 
 interface DocumentEditorApi {
@@ -45,6 +47,7 @@ const {
 const resolvedTheme = useResolvedTheme(theme);
 const { monaco } = storeToRefs(settingsStore);
 const documentManager = useDocumentManager();
+const applicationUpdater = useApplicationUpdater();
 const documentEditor = ref<DocumentEditorApi>();
 const settingsOpen = computed(() => route.name === 'settings');
 const recoveryEnabled = typeof window !== 'undefined' && 'localStorage' in window;
@@ -58,6 +61,7 @@ const externalConflictLanguage = computed<SupportedLanguage>(() => {
     'plaintext'
   );
 });
+let updateCheckTimer = 0;
 
 useDesktopWindow({
   hasModifiedDocuments: () => editorStore.hasModifiedDocuments,
@@ -84,6 +88,11 @@ function openSettings(): void {
 
 function closeSettings(): void {
   void router.push({ name: 'editor' });
+}
+
+function installUpdate(): void {
+  const install = () => applicationUpdater.installAndRestart();
+  if (!documentManager.requestCloseAll(install)) void install();
 }
 
 function onGlobalKeydown(event: KeyboardEvent): void {
@@ -151,11 +160,16 @@ function onBeforeUnload(event: BeforeUnloadEvent): void {
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown);
   window.addEventListener('beforeunload', onBeforeUnload);
+  updateCheckTimer = window.setTimeout(
+    () => void applicationUpdater.checkAndDownload(),
+    1_500
+  );
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeydown);
   window.removeEventListener('beforeunload', onBeforeUnload);
+  window.clearTimeout(updateCheckTimer);
 });
 </script>
 
@@ -170,6 +184,9 @@ onBeforeUnmount(() => {
       :preview-supported="previewSupported"
       :recent-files="recentFiles"
       :app-version="packageMetadata.version"
+      :update-status="applicationUpdater.status.value"
+      :update-version="applicationUpdater.version.value"
+      :update-progress="applicationUpdater.progress.value"
       @new="documentManager.newDocument"
       @open="documentManager.openDocuments"
       @save="documentManager.saveActive()"
@@ -187,6 +204,7 @@ onBeforeUnmount(() => {
       @cycle-tab="editorStore.cycleDocument"
       @set-theme="editorStore.setTheme"
       @open-settings="openSettings"
+      @install-update="installUpdate"
     />
 
     <DocumentTabs
@@ -200,6 +218,7 @@ onBeforeUnmount(() => {
       @save-as="documentManager.saveDocument($event, true)"
       @reveal="documentManager.revealDocument"
       @copy-path="documentManager.copyDocumentPath"
+      @rename="documentManager.requestRename"
       @close="documentManager.requestClose"
       @close-others="documentManager.requestCloseOthers"
       @close-left="documentManager.requestCloseLeft"
@@ -243,6 +262,15 @@ onBeforeUnmount(() => {
       :close-all="documentManager.pendingCloseAll.value"
       :theme="resolvedTheme"
       @decide="documentManager.resolvePendingClose"
+    />
+
+    <RenameDocumentDialog
+      :document="documentManager.pendingRenameDocument.value"
+      :busy="documentManager.busy.value"
+      :theme="resolvedTheme"
+      :error="documentManager.errorMessage.value"
+      @cancel="documentManager.cancelRename"
+      @rename="documentManager.renameDocument"
     />
 
     <ExternalFileConflictDialog
