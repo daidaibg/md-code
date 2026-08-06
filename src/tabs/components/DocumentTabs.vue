@@ -533,7 +533,7 @@ watch(() => props.activeId, () => void revealActiveTab(), { immediate: true });
 .document-tab {
   position: relative;
   flex: 0 0 auto;
-  min-width: 122px;
+  min-width: 100px;
   max-width: 250px;
   height: 33px;
   display: flex;

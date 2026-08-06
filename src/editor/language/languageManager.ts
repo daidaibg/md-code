@@ -17,6 +17,7 @@ const languageDefinitions: LanguageDefinition[] = [
   { id: 'typescript', label: 'TypeScript', extensions: ['ts', 'mts', 'cts', 'tsx'], preview: 'none', defaultMode: 'editor' },
   { id: 'yaml', label: 'YAML', extensions: ['yaml', 'yml'], preview: 'none', defaultMode: 'editor' },
   { id: 'xml', label: 'XML', extensions: ['xml', 'svg'], preview: 'none', defaultMode: 'editor' },
+  { id: 'nginx', label: 'Nginx', extensions: ['con'], preview: 'none', defaultMode: 'editor' },
   { id: 'plaintext', label: 'Plain Text', extensions: ['txt', 'log', 'ini', 'conf'], preview: 'none', defaultMode: 'editor' }
 ];
 
@@ -36,6 +37,8 @@ export function getLanguageDefinition(language: SupportedLanguage): LanguageDefi
 }
 
 export function detectLanguage(filename: string): SupportedLanguage {
+  const basename = filename.split(/[\\/]/u).pop()?.toLocaleLowerCase();
+  if (basename === 'nginx.conf') return 'nginx';
   return extensionMap.get(extensionFromFilename(filename))?.id ?? 'plaintext';
 }
 

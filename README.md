@@ -90,6 +90,21 @@ npm run release:github
 构建脚本会安全读取该文件并通过 `TAURI_SIGNING_PRIVATE_KEY` 传给 Tauri；CI 环境也可以
 直接设置同名环境变量，而不在工作区创建私钥文件。
 
+## 应用数据目录
+
+Windows 正式版把 WebView2 缓存、Local Storage 和日志保存在安装目录的 `data/` 下，
+应用内更新和重新安装不会覆盖该目录。首次运行此版本时，会在 WebView 创建前把旧的
+`%LOCALAPPDATA%/com.mdcode.desktop` 数据迁移到安装目录；只有迁移完整成功后才删除
+旧数据，失败时继续使用旧目录以保护设置和未保存文档恢复内容。
+
+WebView2 的网页、JavaScript 字节码和 GPU 缓存属于可再生成数据。应用启动时会在
+这些缓存合计超过 128 MB 后自动清理，也可以在“设置 → 文件 → 存储与缓存”中手动
+安排下次启动清理；Local Storage、IndexedDB、应用设置和用户文档不会被删除。
+
+开发版使用 `src-tauri/.dev-data/`，不会迁移或占用正式版的数据目录。执行 `npm run tauri:dev` 前会自动检查
+`target/debug`：超过 6 GB 时使用 Cargo 官方的 Dev Profile 清理命令回收空间；
+`target/release` 和正式打包缓存不会受到影响。
+
 `.fingerprint`、`build`、`deps`、`.pdb` 等内容只是 Cargo 编译缓存，不是需要发布的文件。
 Cargo 缓存保存在 `src-tauri/target` 中，不会提交到 Git，也不会在打包后自动删除。
 缓存会加速后续编译；第一次构建或手动清理后仍需要完整编译一次。
@@ -97,8 +112,12 @@ Cargo 缓存保存在 `src-tauri/target` 中，不会提交到 Git，也不会�
 需要手动释放 Cargo 缓存空间时执行：
 
 ```bash
+npm run clean:cargo:dev
 npm run clean:cargo
 ```
+
+前者仅清理 Debug 编译缓存并保留开发数据及 Release 缓存；后者完整清理整个 Cargo
+`target`，下一次开发和正式打包都需要重新编译。
 
 ## 分层
 

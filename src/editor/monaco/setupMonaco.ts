@@ -6,6 +6,7 @@ import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker.js?worker
 import TypeScriptWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker.js?worker';
 import * as monaco from 'monaco-editor';
 import 'monaco-editor/min/vs/editor/editor.main.css';
+import { registerNginxLanguage } from '@/editor/monaco/nginxLanguage';
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -24,5 +25,6 @@ monaco.json.jsonDefaults.setDiagnosticsOptions({
   allowComments: false,
   trailingCommas: 'error'
 });
+registerNginxLanguage(monaco);
 
 export { monaco };

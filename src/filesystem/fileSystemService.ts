@@ -22,6 +22,11 @@ export function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+export async function scheduleWebviewCacheCleanup(): Promise<number> {
+  if (!isTauriRuntime()) throw new Error('仅桌面应用支持清理 WebView 缓存');
+  return invoke<number>('schedule_webview_cache_cleanup');
+}
+
 export function filenameFromPath(path: string): string {
   return path.split(/[\\/]/u).pop() || 'Untitled.txt';
 }

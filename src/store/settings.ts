@@ -20,6 +20,7 @@ export interface MonacoSettings {
 }
 
 interface PersistedSettings {
+  rememberWindowState: boolean;
   newFileDirectory: string;
   imageSaveMode: ImageSaveMode;
   imageSubdirectory: string;
@@ -101,6 +102,7 @@ function normalizeMonacoSettings(value: Partial<MonacoSettings> | undefined): Mo
 
 export const useSettingsStore = defineStore('settings', () => {
   const saved = loadSettings();
+  const rememberWindowState = ref(saved.rememberWindowState ?? true);
   const newFileDirectory = ref(saved.newFileDirectory ?? '');
   const imageSaveMode = ref<ImageSaveMode>(
     saved.imageSaveMode === 'custom' ? 'custom' : 'document'
@@ -141,10 +143,18 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   watch(
-    [newFileDirectory, imageSaveMode, imageSubdirectory, customImageDirectory, monaco],
+    [
+      rememberWindowState,
+      newFileDirectory,
+      imageSaveMode,
+      imageSubdirectory,
+      customImageDirectory,
+      monaco
+    ],
     () => {
       if (typeof window === 'undefined' || !('localStorage' in window)) return;
       const snapshot: PersistedSettings = {
+        rememberWindowState: rememberWindowState.value,
         newFileDirectory: newFileDirectory.value.trim(),
         imageSaveMode: imageSaveMode.value,
         imageSubdirectory: normalizedImageSubdirectory.value,
@@ -157,6 +167,7 @@ export const useSettingsStore = defineStore('settings', () => {
   );
 
   return {
+    rememberWindowState,
     newFileDirectory,
     imageSaveMode,
     imageSubdirectory,

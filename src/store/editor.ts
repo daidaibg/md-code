@@ -308,7 +308,11 @@ export const useEditorStore = defineStore('editor', () => {
   ): void {
     const restoredDocuments = (snapshot.documents ?? []).map((item, index): EditorDocument => {
       const filename = item.filename ?? `Untitled-${index + 1}.md`;
-      const language = item.language ?? detectLanguage(filename);
+      const detectedLanguage = detectLanguage(filename);
+      const language =
+        !item.language || (item.language === 'plaintext' && detectedLanguage !== 'plaintext')
+          ? detectedLanguage
+          : item.language;
       return {
         id: item.id ?? createId(),
         path: item.path ?? null,

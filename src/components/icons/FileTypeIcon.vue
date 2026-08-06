@@ -18,6 +18,7 @@ const shortLabel = computed(() => {
     case 'typescript': return extension.value === 'tsx' ? 'TSX' : 'TS';
     case 'yaml': return 'YML';
     case 'xml': return extension.value === 'svg' ? 'SVG' : 'XML';
+    case 'nginx': return 'NGX';
     case 'plaintext':
       if (extension.value === 'log') return 'LOG';
       if (extension.value === 'ini' || extension.value === 'conf') return 'INI';
@@ -88,6 +89,7 @@ const shortLabel = computed(() => {
 .type-typescript { --file-icon-color: #3178c6; }
 .type-yaml { --file-icon-color: #8e44ad; }
 .type-xml { --file-icon-color: #d35400; }
+.type-nginx { --file-icon-color: #009639; }
 .type-plaintext { --file-icon-color: #718096; }
 
 .extension-scss { --file-icon-color: #c6538c; }

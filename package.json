@@ -1,7 +1,7 @@
 {
     "name": "md-code",
     "private": true,
-    "version": "0.3.0",
+    "version": "0.3.3",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -9,9 +9,11 @@
         "typecheck": "vue-tsc --noEmit",
         "preview": "vite preview",
         "tauri": "tauri",
+        "pretauri:dev": "node scripts/maintain-dev-cache.mjs",
         "tauri:dev": "tauri dev",
         "tauri:build": "node scripts/build-release.mjs",
         "release:github": "node scripts/publish-github-release.mjs",
+        "clean:cargo:dev": "node scripts/maintain-dev-cache.mjs --force",
         "clean:cargo": "node scripts/clean-cargo-cache.mjs"
     },
     "dependencies": {

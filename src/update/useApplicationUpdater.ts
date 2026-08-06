@@ -8,24 +8,42 @@ export type ApplicationUpdateStatus =
   | 'checking'
   | 'downloading'
   | 'ready'
-  | 'installing';
+  | 'installing'
+  | 'up-to-date'
+  | 'failed';
 
 export function useApplicationUpdater() {
   const status = ref<ApplicationUpdateStatus>('idle');
   const version = ref('');
   const downloadedBytes = ref(0);
   const contentLength = ref<number>();
+  const manualCheckVisible = ref(false);
   let pendingUpdate: Update | null = null;
+  let feedbackTimer = 0;
 
   const progress = computed(() => {
     if (!contentLength.value) return undefined;
     return Math.min(100, Math.round((downloadedBytes.value / contentLength.value) * 100));
   });
 
-  async function resetSilently(): Promise<void> {
+  function clearFeedbackTimer(): void {
+    window.clearTimeout(feedbackTimer);
+    feedbackTimer = 0;
+  }
+
+  function showManualResult(result: 'up-to-date' | 'failed'): void {
+    clearFeedbackTimer();
+    manualCheckVisible.value = true;
+    status.value = result;
+    feedbackTimer = window.setTimeout(() => {
+      if (status.value === result) status.value = 'idle';
+      manualCheckVisible.value = false;
+    }, 3_000);
+  }
+
+  async function clearPendingUpdate(): Promise<void> {
     const update = pendingUpdate;
     pendingUpdate = null;
-    status.value = 'idle';
     version.value = '';
     downloadedBytes.value = 0;
     contentLength.value = undefined;
@@ -38,19 +56,30 @@ export function useApplicationUpdater() {
     }
   }
 
-  async function checkAndDownload(): Promise<void> {
-    if (!isTauriRuntime() || status.value !== 'idle') return;
+  async function checkAndDownload(manual = false): Promise<void> {
+    if (!isTauriRuntime()) return;
+    if (!manual && !import.meta.env.PROD) return;
+    if (status.value === 'checking') {
+      if (manual) manualCheckVisible.value = true;
+      return;
+    }
+    if (!['idle', 'up-to-date', 'failed'].includes(status.value)) return;
+
+    clearFeedbackTimer();
+    manualCheckVisible.value = manual;
     status.value = 'checking';
 
     try {
       const update = await check({ timeout: 15_000 });
       if (!update) {
-        status.value = 'idle';
+        if (manualCheckVisible.value) showManualResult('up-to-date');
+        else status.value = 'idle';
         return;
       }
 
       pendingUpdate = update;
       version.value = update.version;
+      manualCheckVisible.value = false;
       status.value = 'downloading';
 
       await update.download(
@@ -69,7 +98,9 @@ export function useApplicationUpdater() {
 
       status.value = 'ready';
     } catch {
-      await resetSilently();
+      await clearPendingUpdate();
+      if (manualCheckVisible.value) showManualResult('failed');
+      else status.value = 'idle';
     }
   }
 
@@ -89,6 +120,7 @@ export function useApplicationUpdater() {
     status,
     version,
     progress,
+    manualCheckVisible,
     checkAndDownload,
     installAndRestart
   };

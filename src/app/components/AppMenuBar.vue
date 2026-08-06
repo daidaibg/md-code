@@ -20,6 +20,7 @@ const props = defineProps<{
   updateStatus: ApplicationUpdateStatus;
   updateVersion: string;
   updateProgress?: number;
+  manualCheckVisible: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -41,6 +42,7 @@ const emit = defineEmits<{
   'set-theme': [theme: EditorTheme];
   'open-settings': [];
   'install-update': [];
+  'check-update': [];
 }>();
 
 type MenuId = 'file' | 'edit' | 'search' | 'view' | 'settings' | 'help';
@@ -172,7 +174,23 @@ onBeforeUnmount(() => {
     </button>
 
     <div
-      v-if="updateStatus === 'downloading'"
+      v-if="updateStatus === 'checking' && manualCheckVisible"
+      class="update-feedback checking"
+      aria-live="polite"
+    >
+      <span class="update-spinner" aria-hidden="true" />
+      <span>正在检查更新…</span>
+    </div>
+    <div
+      v-else-if="updateStatus === 'up-to-date' || updateStatus === 'failed'"
+      class="update-feedback"
+      :class="{ failed: updateStatus === 'failed' }"
+      aria-live="polite"
+    >
+      {{ updateStatus === 'failed' ? '检查更新失败' : '已是最新版' }}
+    </div>
+    <div
+      v-else-if="updateStatus === 'downloading'"
       class="update-progress"
       :title="`正在下载 MD Code v${updateVersion}`"
       aria-live="polite"
@@ -357,6 +375,15 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="activeMenu === 'help'" class="menu-popup" :style="{ left: menuLeft + 'px' }" role="menu">
+      <button
+        type="button"
+        class="menu-item"
+        :disabled="!['idle', 'up-to-date', 'failed'].includes(updateStatus)"
+        @click="run(() => emit('check-update'))"
+      >
+        <span>检查更新</span>
+      </button>
+      <div class="menu-separator" />
       <div class="menu-empty version-only">v{{ appVersion }}</div>
     </div>
   </header>
@@ -414,22 +441,44 @@ onBeforeUnmount(() => {
 }
 
 .update-progress,
+.update-feedback,
 .install-update {
-  width: 126px;
-  height: 26px;
-  flex: 0 0 126px;
-  margin-left: 7px;
+  width: 100px;
+  height: 22px;
+  flex: 0 0 100px;
+  margin-left: 4px;
   border: 0;
   border-radius: 3px;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 10px;
+}
+
+.update-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 6px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+
+  &.failed { color: var(--danger); }
+}
+
+.update-spinner {
+  width: 9px;
+  height: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: update-spinner-rotate 0.8s linear infinite;
 }
 
 .update-progress {
   display: grid;
   align-content: center;
-  gap: 3px;
-  padding: 0 8px;
+  gap: 2px;
+  padding: 0 6px;
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
@@ -456,7 +505,7 @@ onBeforeUnmount(() => {
 }
 
 .install-update {
-  padding: 0 10px;
+  padding: 0 7px;
   color: var(--button-primary-text, #fff);
   background: var(--accent);
   cursor: pointer;
@@ -468,6 +517,10 @@ onBeforeUnmount(() => {
 @keyframes update-progress-slide {
   from { transform: translateX(-110%); }
   to { transform: translateX(250%); }
+}
+
+@keyframes update-spinner-rotate {
+  to { transform: rotate(360deg); }
 }
 
 .menu-title {

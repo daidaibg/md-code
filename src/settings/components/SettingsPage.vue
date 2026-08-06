@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
-import { chooseDirectory } from '@/filesystem/fileSystemService';
+import {
+  chooseDirectory,
+  scheduleWebviewCacheCleanup
+} from '@/filesystem/fileSystemService';
 import { useEditorStore } from '@/store/editor';
 import { useSettingsStore } from '@/store/settings';
 import { listCodeThemes, listPreviewThemes } from '@/themes/themeRegistry';
@@ -22,6 +25,7 @@ const route = useRoute();
 const router = useRouter();
 const { activeDocument, theme, previewTheme, codeTheme } = storeToRefs(editorStore);
 const {
+  rememberWindowState,
   newFileDirectory,
   imageSaveMode,
   imageSubdirectory,
@@ -30,6 +34,9 @@ const {
 } = storeToRefs(settingsStore);
 const previewThemes = listPreviewThemes();
 const codeThemes = listCodeThemes();
+const cacheCleanupBusy = ref(false);
+const cacheCleanupMessage = ref('');
+const cacheCleanupFailed = ref(false);
 const navigationItems: NavigationItem[] = [
   { id: 'appearance', label: '外观', description: '主题与阅读样式' },
   { id: 'editor', label: '编辑器', description: 'Monaco 编辑体验' },
@@ -76,6 +83,34 @@ async function selectCustomDirectory(): Promise<void> {
 async function selectNewFileDirectory(): Promise<void> {
   const selected = await chooseDirectory(newFileDirectory.value || undefined);
   if (selected) settingsStore.setNewFileDirectory(selected);
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = bytes / 1024;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size >= 100 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+async function clearWebviewCache(): Promise<void> {
+  cacheCleanupBusy.value = true;
+  cacheCleanupMessage.value = '';
+  cacheCleanupFailed.value = false;
+  try {
+    const estimatedBytes = await scheduleWebviewCacheCleanup();
+    const sizeMessage = estimatedBytes > 0 ? `约 ${formatFileSize(estimatedBytes)} ` : '';
+    cacheCleanupMessage.value = `已安排清理${sizeMessage}缓存，完全退出并再次启动应用后生效。`;
+  } catch (error) {
+    cacheCleanupFailed.value = true;
+    cacheCleanupMessage.value = `安排缓存清理失败：${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    cacheCleanupBusy.value = false;
+  }
 }
 </script>
 
@@ -167,6 +202,14 @@ async function selectNewFileDirectory(): Promise<void> {
                 {{ item.label }}
               </option>
             </select>
+          </label>
+
+          <label class="toggle-row">
+            <span class="setting-copy">
+              <strong>自动保存窗口大小与位置</strong>
+              <small>下次启动时恢复上次非最大化状态下的窗口尺寸和屏幕位置。</small>
+            </span>
+            <input v-model="rememberWindowState" type="checkbox" />
           </label>
         </section>
 
@@ -293,32 +336,66 @@ async function selectNewFileDirectory(): Promise<void> {
           </section>
         </template>
 
-        <section v-else-if="activeSection === 'files'" class="settings-card">
-          <div class="section-heading">
-            <h2>新建文件</h2>
-            <p>设置新建文档第一次保存时默认打开的位置。</p>
-          </div>
-
-          <label class="setting-row">
-            <span class="setting-copy">
-              <strong>新建文件默认目录</strong>
-              <small>留空时使用系统上一次选择的目录。</small>
-            </span>
-            <div class="path-picker setting-path-picker">
-              <input
-                type="text"
-                :value="newFileDirectory"
-                placeholder="使用系统默认目录"
-                @input="
-                  settingsStore.setNewFileDirectory(
-                    ($event.target as HTMLInputElement).value
-                  )
-                "
-              />
-              <button type="button" @click.prevent="selectNewFileDirectory">浏览...</button>
+        <template v-else-if="activeSection === 'files'">
+          <section class="settings-card">
+            <div class="section-heading">
+              <h2>新建文件</h2>
+              <p>设置新建文档第一次保存时默认打开的位置。</p>
             </div>
-          </label>
-        </section>
+
+            <label class="setting-row">
+              <span class="setting-copy">
+                <strong>新建文件默认目录</strong>
+                <small>留空时使用系统上一次选择的目录。</small>
+              </span>
+              <div class="path-picker setting-path-picker">
+                <input
+                  type="text"
+                  :value="newFileDirectory"
+                  placeholder="使用系统默认目录"
+                  @input="
+                    settingsStore.setNewFileDirectory(
+                      ($event.target as HTMLInputElement).value
+                    )
+                  "
+                />
+                <button type="button" @click.prevent="selectNewFileDirectory">浏览...</button>
+              </div>
+            </label>
+          </section>
+
+          <section class="settings-card compact-card">
+            <div class="section-heading with-action">
+              <div>
+                <h2>存储与缓存</h2>
+                <p>清除 WebView 浏览器内核生成的临时缓存，释放磁盘空间。</p>
+              </div>
+              <button
+                type="button"
+                class="secondary-button"
+                :disabled="cacheCleanupBusy"
+                @click="clearWebviewCache"
+              >
+                {{ cacheCleanupBusy ? '正在处理…' : '清除 WebView 缓存' }}
+              </button>
+            </div>
+
+            <div class="cache-cleanup-note">
+              <strong>用户数据会保留</strong>
+              <small>
+                不会删除应用设置、最近文件、编辑状态、Local Storage、IndexedDB、文档或图片。缓存将在下次启动 WebView 前安全清理。
+              </small>
+              <small>可再生成缓存超过 128 MB 时，应用也会在启动前自动清理。</small>
+              <small
+                v-if="cacheCleanupMessage"
+                class="cache-cleanup-status"
+                :class="{ failed: cacheCleanupFailed }"
+              >
+                {{ cacheCleanupMessage }}
+              </small>
+            </div>
+          </section>
+        </template>
 
         <section v-else class="settings-card">
           <div class="section-heading">
@@ -637,6 +714,22 @@ input[type='number'] {
     font-family: var(--font-mono);
     overflow-wrap: anywhere;
   }
+}
+
+.cache-cleanup-note {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 0 4px;
+
+  strong { font-size: 11.5px; font-weight: 600; }
+  small { color: var(--text-muted); font-size: 10px; line-height: 1.5; }
+}
+
+.cache-cleanup-status {
+  color: var(--accent) !important;
+
+  &.failed { color: #c42b1c !important; }
 }
 
 @media (max-width: 720px) {

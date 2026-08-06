@@ -64,6 +64,7 @@ const externalConflictLanguage = computed<SupportedLanguage>(() => {
 let updateCheckTimer = 0;
 
 useDesktopWindow({
+  shouldPersistWindowState: () => settingsStore.rememberWindowState,
   hasModifiedDocuments: () => editorStore.hasModifiedDocuments,
   isCloseConfirmationPending: () => documentManager.pendingCloseAll.value,
   requestCloseAll: documentManager.requestCloseAll,
@@ -93,6 +94,10 @@ function closeSettings(): void {
 function installUpdate(): void {
   const install = () => applicationUpdater.installAndRestart();
   if (!documentManager.requestCloseAll(install)) void install();
+}
+
+function checkForUpdates(): void {
+  void applicationUpdater.checkAndDownload(true);
 }
 
 function onGlobalKeydown(event: KeyboardEvent): void {
@@ -160,10 +165,12 @@ function onBeforeUnload(event: BeforeUnloadEvent): void {
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown);
   window.addEventListener('beforeunload', onBeforeUnload);
-  updateCheckTimer = window.setTimeout(
-    () => void applicationUpdater.checkAndDownload(),
-    1_500
-  );
+  if (import.meta.env.PROD) {
+    updateCheckTimer = window.setTimeout(
+      () => void applicationUpdater.checkAndDownload(),
+      1_500
+    );
+  }
 });
 
 onBeforeUnmount(() => {
@@ -187,6 +194,7 @@ onBeforeUnmount(() => {
       :update-status="applicationUpdater.status.value"
       :update-version="applicationUpdater.version.value"
       :update-progress="applicationUpdater.progress.value"
+      :manual-check-visible="applicationUpdater.manualCheckVisible.value"
       @new="documentManager.newDocument"
       @open="documentManager.openDocuments"
       @save="documentManager.saveActive()"
@@ -205,6 +213,7 @@ onBeforeUnmount(() => {
       @set-theme="editorStore.setTheme"
       @open-settings="openSettings"
       @install-update="installUpdate"
+      @check-update="checkForUpdates"
     />
 
     <DocumentTabs

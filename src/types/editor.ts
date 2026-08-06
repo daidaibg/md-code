@@ -11,6 +11,7 @@ export type SupportedLanguage =
   | 'typescript'
   | 'yaml'
   | 'xml'
+  | 'nginx'
   | 'plaintext';
 
 export type PreviewKind = 'markdown' | 'html' | 'json' | 'none';

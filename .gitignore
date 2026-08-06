@@ -16,6 +16,7 @@ dist/
 
 # Rust / Tauri generated output
 src-tauri/target/
+src-tauri/.dev-data/
 src-tauri/.cargo-check-*/
 src-tauri/target-validation/
 src-tauri/updater.key
