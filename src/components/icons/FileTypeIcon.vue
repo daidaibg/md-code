@@ -96,6 +96,5 @@ const shortLabel = computed(() => {
 .extension-less { --file-icon-color: #1d365d; }
 .extension-svg { --file-icon-color: #e89b27; }
 .extension-log { --file-icon-color: #607d8b; }
-.extension-ini,
-.extension-conf { --file-icon-color: #5c6bc0; }
+.type-plaintext.extension-ini { --file-icon-color: #5c6bc0; }
 </style>

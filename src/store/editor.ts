@@ -115,6 +115,11 @@ export const useEditorStore = defineStore('editor', () => {
         (item) => item.path?.toLocaleLowerCase() === normalized
       );
       if (existing) {
+        const language = input.language ?? detectLanguage(input.filename);
+        if (existing.language !== language) {
+          existing.language = language;
+          existing.mode = defaultModeForLanguage(language);
+        }
         activeDocumentId.value = existing.id;
         return existing.id;
       }

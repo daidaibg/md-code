@@ -13,7 +13,7 @@ export function registerNginxLanguage(monaco: typeof Monaco): void {
     monaco.languages.register({
       id: 'nginx',
       aliases: ['Nginx', 'nginx'],
-      extensions: ['.con'],
+      extensions: ['.conf', '.con'],
       filenames: ['nginx.conf']
     });
   }

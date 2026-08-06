@@ -17,8 +17,8 @@ const languageDefinitions: LanguageDefinition[] = [
   { id: 'typescript', label: 'TypeScript', extensions: ['ts', 'mts', 'cts', 'tsx'], preview: 'none', defaultMode: 'editor' },
   { id: 'yaml', label: 'YAML', extensions: ['yaml', 'yml'], preview: 'none', defaultMode: 'editor' },
   { id: 'xml', label: 'XML', extensions: ['xml', 'svg'], preview: 'none', defaultMode: 'editor' },
-  { id: 'nginx', label: 'Nginx', extensions: ['con'], preview: 'none', defaultMode: 'editor' },
-  { id: 'plaintext', label: 'Plain Text', extensions: ['txt', 'log', 'ini', 'conf'], preview: 'none', defaultMode: 'editor' }
+  { id: 'nginx', label: 'Nginx', extensions: ['conf', 'con'], preview: 'none', defaultMode: 'editor' },
+  { id: 'plaintext', label: 'Plain Text', extensions: ['txt', 'log', 'ini'], preview: 'none', defaultMode: 'editor' }
 ];
 
 const extensionMap = new Map<string, LanguageDefinition>();
