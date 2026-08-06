@@ -1,7 +1,7 @@
 {
     "name": "md-code",
     "private": true,
-    "version": "0.3.3",
+    "version": "0.3.4",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -12,7 +12,7 @@
         "pretauri:dev": "node scripts/maintain-dev-cache.mjs",
         "tauri:dev": "tauri dev",
         "tauri:build": "node scripts/build-release.mjs",
-        "release:github": "node scripts/publish-github-release.mjs",
+        "release:publish": "node scripts/publish-github-release.mjs",
         "clean:cargo:dev": "node scripts/maintain-dev-cache.mjs --force",
         "clean:cargo": "node scripts/clean-cargo-cache.mjs"
     },
