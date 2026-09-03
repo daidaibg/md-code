@@ -1,0 +1,55 @@
+// Animate the owning content element, not a scrollbar pseudo-element (Chromium
+// does not reliably transition the latter). The thumb inherits each frame's color.
+@property --app-scrollbar-thumb {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+// Apply only to scrolling surfaces, never all elements: a universal transition
+// would replace unrelated UI animations and leak visibility to nested scrollers.
+@mixin content-scrollbar {
+  --app-scrollbar-thumb: transparent;
+  transition: --app-scrollbar-thumb 450ms ease;
+
+  &::-webkit-scrollbar { width: 14px; height: 14px; background: transparent; }
+  &::-webkit-scrollbar-track,
+  &::-webkit-scrollbar-track-piece,
+  &::-webkit-scrollbar-corner {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  &::-webkit-scrollbar-thumb {
+    border: 0;
+    border-radius: 0;
+    background: var(--app-scrollbar-thumb);
+    box-shadow: none;
+  }
+  // :hover includes the entire content surface, not just the narrow thumb.
+  &:hover,
+  &:focus-visible,
+  &:active { --app-scrollbar-thumb: var(--content-scrollbar-thumb); transition-duration: 300ms; }
+  &::-webkit-scrollbar-thumb:hover { background: var(--content-scrollbar-hover); }
+  &::-webkit-scrollbar-thumb:active { background: var(--content-scrollbar-active); }
+  @media (hover: none) {
+    --app-scrollbar-thumb: var(--content-scrollbar-thumb);
+  }
+  // The user explicitly enabled this color-only fade, including reduced motion.
+}
+
+:root {
+  --content-scrollbar-thumb: #79797966;
+  --content-scrollbar-hover: #646464b3;
+  --content-scrollbar-active: #00000099;
+}
+[data-theme='dark'] { --content-scrollbar-active: #bfbfbf66; }
+
+// ScrollArea owns preview/TOC/settings overlays; do not style their viewports.
+// Native fallback for HTML rendered inside Markdown and small menu scrollers.
+.app-scrollbar,
+.settings-navigation,
+.recent-menu,
+.md-editor.markdown-preview-host .md-editor-preview :is(pre, table, .md-mermaid) {
+  @include content-scrollbar;
+}

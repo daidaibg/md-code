@@ -1,0 +1,124 @@
+// Upstream helper normalize + default-theme content normalize/content-wrapper.
+.md-editor.markdown-preview-host .md-editor-preview.vuepress-official-theme {
+  --md-theme-color: var(--vp-c-text);
+  --md-theme-bg-color: var(--vp-c-bg);
+  --md-theme-border-color: var(--vp-c-divider);
+  --md-theme-link-color: var(--vp-c-accent);
+  --md-theme-link-hover-color: var(--vp-c-accent-hover);
+  --md-theme-code-active-color: var(--vp-c-accent);
+
+  // Upstream 740px content width plus 40px padding on either side.
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 32px 40px;
+  color: var(--vp-c-text);
+  background: var(--vp-c-bg);
+  font: 400 16px/1.6 var(--markdown-font-sans);
+  letter-spacing: normal;
+  word-spacing: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+
+  h1, h2, h3, h4, h5, h6 {
+    position: relative;
+    margin: 24px 0 0;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: none;
+    font-weight: 600;
+    line-height: 1.25;
+    overflow-wrap: break-word;
+    scroll-margin-top: 24px;
+  }
+  h1 { font-size: 32px; }
+  h2 {
+    padding-bottom: 4.8px;
+    border-bottom: 1px solid var(--vp-c-divider);
+    font-size: 26.4px;
+  }
+  h3 { font-size: 21.6px; }
+  h4 { font-size: 18.4px; }
+  h5 { font-size: 16.8px; }
+  h6 { font-size: 16px; }
+  > :first-child { margin-top: 0; }
+  > :is(h1, h2, h3, h4, h5, h6):first-child {
+    margin-bottom: 16px;
+    + p, + pre, + .md-editor-code, + .md-admonition { margin-top: 32px; }
+  }
+  > :last-child { margin-bottom: 0; }
+
+  p, ul, ol, dl { margin: 16px 0; line-height: 1.6; }
+  ul, ol { padding-inline-start: 1.2em; }
+  ul { list-style-type: disc; }
+  ol { list-style-type: decimal; }
+  ul ul { list-style-type: circle; }
+  li { margin: 0; line-height: 1.6; }
+  li + li { margin-top: 0; }
+  li > ul, li > ol { margin-block: 0; }
+  dt { font-weight: 600; }
+  dd { margin-inline-start: 1.2em; }
+  strong { color: inherit; font-weight: 600; }
+  a { color: var(--vp-c-accent); font-weight: 500; text-decoration: underline; overflow-wrap: break-word; }
+  a:hover { color: var(--vp-c-accent-hover); }
+  a:focus-visible { outline: 2px solid var(--vp-c-accent); outline-offset: 3px; }
+
+  blockquote {
+    margin: 16px 0;
+    padding: 4px 0 4px 16px;
+    border: 0;
+    border-inline-start: 3.2px solid var(--vp-c-border-hard);
+    border-radius: 0;
+    color: var(--vp-c-text-mute);
+    background: transparent;
+    font-size: 16px;
+    > p { margin: 0; }
+  }
+  hr { height: 0; margin: 24px 0; border: 0; border-bottom: 1px solid var(--vp-c-divider); background: none; }
+  img { max-width: 100%; height: auto; vertical-align: middle; }
+  figure { margin: 16px 0; }
+  figcaption { color: var(--vp-c-text-mute); font-size: 14px; text-align: center; }
+
+  code, tt, samp { font-family: var(--markdown-font-mono); }
+  :not(pre) > code {
+    margin: 0;
+    padding: 3px 6px;
+    border: 0;
+    border-radius: 4px;
+    color: inherit;
+    background: var(--vp-c-grey-soft);
+    font-size: 0.875em;
+    overflow-wrap: break-word;
+  }
+  p a code { color: var(--vp-c-accent); font-weight: 400; }
+  kbd {
+    display: inline-block;
+    min-width: 1em;
+    margin-inline: 2px;
+    padding: 0.25em;
+    border: 1px solid var(--vp-c-border);
+    border-radius: 0.25em;
+    box-shadow: 1px 1px 4px var(--vp-c-shadow);
+    line-height: 1;
+    letter-spacing: -0.1em;
+    text-align: center;
+  }
+
+  table { display: block; width: max-content; max-width: 100%; overflow-x: auto; margin: 16px 0; border-collapse: collapse; font-size: 16px; }
+  tr, th, td { color: inherit; background: transparent; }
+  tbody tr:nth-child(odd) { background: var(--vp-c-bg-alt); }
+  th, td { padding: 0.6em 1em; border: 1px solid var(--vp-c-border-hard); line-height: 1.6; }
+  th { font-weight: 600; }
+  table code { padding: 1.6px 6.4px; }
+  input[type='checkbox'] { accent-color: var(--vp-c-accent); }
+
+  .md-mermaid { margin: 20px 0; background: transparent; }
+
+  @container vuepress-content (max-width: 959px) { padding: 32px; }
+  @container vuepress-content (max-width: 419px) {
+    padding: 24px;
+    h1 { font-size: 30.4px; }
+  }
+}

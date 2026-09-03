@@ -1,0 +1,94 @@
+// Shared reading scale, based on GitHub Primer's markdown typography.
+// Keep theme colours, borders and heading decorations; override type only.
+// The host qualifier wins over the bundled themes, including mobile rules.
+.md-editor.markdown-preview-host {
+  --markdown-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+    Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --markdown-font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  .md-editor-preview:not(.vuepress-official-theme) {
+    font-family: var(--markdown-font-sans);
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: normal;
+    word-spacing: normal;
+
+    h1, h2, h3, h4, h5, h6 {
+      margin-block-start: 24px;
+      margin-block-end: 16px;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    h1 { font-size: 2em; }
+    h2 { font-size: 1.5em; }
+    h3 { font-size: 1.25em; }
+    h4 { font-size: 1em; }
+    h5 { font-size: 0.875em; }
+    h6 { font-size: 0.85em; }
+
+    p, blockquote, ul, ol, dl, table, details {
+      margin-block-start: 0;
+      margin-block-end: 16px;
+      font-size: inherit;
+      line-height: 1.5;
+      word-spacing: normal;
+    }
+
+    li, th, td, summary {
+      font-size: inherit;
+      line-height: 1.5;
+    }
+
+    li { margin-block: 0; }
+    li + li { margin-block-start: 0.25em; }
+    li > p { margin-block-start: 16px; }
+    ul ul, ul ol, ol ul, ol ol { margin-block: 0; }
+
+    code, tt, samp {
+      font-family: var(--markdown-font-mono);
+      font-size: 85%;
+      line-height: inherit;
+      letter-spacing: normal;
+    }
+
+    // Code inside a heading inherits that heading's size, as on GitHub.
+    :is(h1, h2, h3, h4, h5, h6) :is(code, tt) { font-size: inherit; }
+
+    // Our fenced blocks have a separate 12px toolbar wrapper, so use an
+    // explicit size instead of inheriting 85% from that wrapper.
+    pre, pre code, .md-editor-code pre code {
+      font-family: var(--markdown-font-mono);
+      font-size: 13.6px;
+      line-height: 1.45;
+      letter-spacing: normal;
+      word-spacing: normal;
+    }
+
+    > :first-child { margin-block-start: 0; }
+    > :last-child { margin-block-end: 0; }
+  }
+
+  .md-editor-preview {
+    // Mermaid measures HTML labels before building its SVG geometry. Keep
+    // those labels independent of Markdown paragraph margins/line spacing,
+    // both during measurement and after insertion into the preview.
+    .md-mermaid svg foreignObject p {
+      margin: 0;
+      padding: 0;
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      line-height: inherit;
+      letter-spacing: normal;
+      word-spacing: normal;
+      word-break: normal;
+      // Mermaid caps HTML labels at 200px but may leave nowrap on the
+      // parent. Wrap inside that measured width instead of clipping text.
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+}

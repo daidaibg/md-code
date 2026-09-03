@@ -1,0 +1,68 @@
+// Scoped upstream vars.scss / vars-dark.scss / helper colors.scss.
+// Never put VuePress variables on :root: the surrounding application is separate.
+.md-editor.markdown-preview-host[data-preview-theme='vuepress'] {
+  --vp-c-accent: #299764;
+  --vp-c-accent-hover: #4abf8a;
+  --vp-c-accent-soft: rgb(16 185 129 / 14%);
+  --vp-c-bg: #fff;
+  --vp-c-bg-alt: #f6f6f7;
+  --vp-c-text: rgb(60 60 67);
+  --vp-c-text-mute: rgb(60 60 67 / 78%);
+  --vp-c-text-subtle: rgb(60 60 67 / 56%);
+  --vp-c-divider: #e2e2e3;
+  --vp-c-border: #c2c2c4;
+  --vp-c-border-hard: #b8b8ba;
+  --vp-c-shadow: rgb(0 0 0 / 15%);
+  --vp-c-control: rgb(142 150 170 / 10%);
+  --vp-c-control-hover: rgb(142 150 170 / 16%);
+  --vp-c-grey-text: #656869;
+  --vp-c-grey-soft: rgb(142 150 170 / 14%);
+  --vp-c-blue-text: #2888a7;
+  --vp-c-blue-soft: rgb(27 178 229 / 14%);
+  --vp-c-green-text: #18794e;
+  --vp-c-green-soft: rgb(16 185 129 / 14%);
+  --vp-c-yellow-text: #915930;
+  --vp-c-yellow-soft: rgb(234 179 8 / 14%);
+  --vp-c-red-text: #b8272c;
+  --vp-c-red-soft: rgb(244 63 94 / 14%);
+  --vp-c-purple-text: #6f42c1;
+  --vp-c-purple-soft: rgb(159 122 234 / 14%);
+  --markdown-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  --markdown-font-mono: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+  --md-color: var(--vp-c-text);
+  color: var(--vp-c-text);
+  background: var(--vp-c-bg);
+  accent-color: var(--vp-c-accent);
+  container: vuepress-content / inline-size;
+  -webkit-font-smoothing: antialiased;
+
+  &.md-editor-dark {
+    --vp-c-accent: #3dd68c;
+    --vp-c-accent-hover: #349469;
+    --vp-c-accent-soft: rgb(16 185 129 / 16%);
+    --vp-c-bg: #1b1b1f;
+    --vp-c-bg-alt: #161618;
+    --vp-c-text: rgb(235 235 245 / 86%);
+    --vp-c-text-mute: rgb(235 235 245 / 60%);
+    --vp-c-text-subtle: rgb(235 235 245 / 38%);
+    --vp-c-divider: #2e2e32;
+    --vp-c-border: #3c3f44;
+    --vp-c-border-hard: #45484e;
+    --vp-c-shadow: rgb(0 0 0 / 30%);
+    --vp-c-control: rgb(101 117 133 / 12%);
+    --vp-c-control-hover: rgb(101 117 133 / 18%);
+    --vp-c-grey-text: #939499;
+    --vp-c-grey-soft: rgb(101 117 133 / 16%);
+    --vp-c-blue-text: #c9e8f2;
+    --vp-c-blue-soft: rgb(27 178 229 / 16%);
+    --vp-c-green-text: #3dd68c;
+    --vp-c-green-soft: rgb(16 185 129 / 16%);
+    --vp-c-yellow-text: #f9b44e;
+    --vp-c-yellow-soft: rgb(234 179 8 / 16%);
+    --vp-c-red-text: #f66f81;
+    --vp-c-red-soft: rgb(244 63 94 / 16%);
+    --vp-c-purple-text: #c8abfa;
+    --vp-c-purple-soft: rgb(159 122 234 / 16%);
+  }
+}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import ScrollArea from '@/components/scroll/ScrollArea.vue';
 import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
 import {
@@ -137,7 +138,7 @@ async function clearWebviewCache(): Promise<void> {
       </nav>
     </aside>
 
-    <div class="settings-main">
+    <ScrollArea class="settings-main" label="设置正文">
       <header class="settings-header">
         <div>
           <h1>{{ activeNavigation.label }}</h1>
@@ -474,7 +475,7 @@ async function clearWebviewCache(): Promise<void> {
           </div>
         </section>
       </div>
-    </div>
+    </ScrollArea>
   </section>
 </template>
 
@@ -543,7 +544,7 @@ async function clearWebviewCache(): Promise<void> {
 .settings-main {
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .settings-header {

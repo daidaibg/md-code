@@ -3,7 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core';
 import DOMPurify from 'dompurify';
 import '@vavt/markdown-theme/css/all.css';
+import '@/markdown/themes/typography.scss';
 import '@/markdown/themes/admonition.css';
+import '@/markdown/themes/vuepress/index.scss';
 import { isTauriRuntime } from '@/filesystem/fileSystemService';
 import { createMarkdownEngine } from '@/markdown/core/createMarkdownEngine';
 import { extractHeadings } from '@/markdown/toc/extractHeadings';
@@ -26,6 +28,7 @@ const preview = ref<HTMLElement>();
 const markdown = createMarkdownEngine();
 let renderVersion = 0;
 let mermaidPromise: Promise<MermaidApi> | undefined;
+const mermaidSources = new WeakMap<HTMLElement, string>();
 let codeThemeStyle: HTMLStyleElement | undefined;
 let copyResetTimer: number | undefined;
 
@@ -96,17 +99,22 @@ async function renderMermaidDiagrams(): Promise<void> {
   if (diagrams.length === 0) return;
 
   const mermaid = await loadMermaid();
+  await document.fonts.ready;
   if (version !== renderVersion) return;
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
-    theme: props.theme === 'dark' ? 'dark' : 'default'
+    theme: props.theme === 'dark' ? 'dark' : 'default',
+    fontFamily: getComputedStyle(root).fontFamily
   });
 
   for (const [index, diagram] of diagrams.entries()) {
-    const source = diagram.querySelector('.md-mermaid-source')?.textContent ?? '';
+    const source = diagram.querySelector('.md-mermaid-source')?.textContent ?? mermaidSources.get(diagram) ?? '';
+    mermaidSources.set(diagram, source);
     try {
-      const result = await mermaid.render(`md-mermaid-${version}-${index}`, source);
+      // Measure labels in their final CSS context, not Mermaid's body-level
+      // scratch container (which does not inherit our preview/theme styles).
+      const result = await mermaid.render(`md-mermaid-${version}-${index}`, source, diagram);
       if (version !== renderVersion) return;
       diagram.innerHTML = result.svg;
       result.bindFunctions?.(diagram);
@@ -132,7 +140,7 @@ async function onPreviewClick(event: MouseEvent): Promise<void> {
 }
 
 watch(tocItems, (items) => emit('toc-change', items), { immediate: true });
-watch([renderedHtml, () => props.theme, () => props.documentPath], () => void renderMermaidDiagrams(), {
+watch([renderedHtml, () => props.theme, () => props.documentPath, () => props.previewTheme], () => void renderMermaidDiagrams(), {
   immediate: true,
   flush: 'post'
 });
@@ -156,7 +164,7 @@ defineExpose({ getElement: () => preview.value });
 </script>
 
 <template>
-  <div class="md-editor markdown-preview-host" :class="{ 'md-editor-dark': theme === 'dark' }">
+  <div class="md-editor markdown-preview-host" :class="{ 'md-editor-dark': theme === 'dark' }" :data-preview-theme="previewTheme">
     <div
       ref="preview"
       class="md-editor-preview"
@@ -175,8 +183,7 @@ defineExpose({ getElement: () => preview.value });
   border: 0;
   color: var(--preview-text);
   background: var(--preview-bg);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui,
-    ui-sans-serif, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  font-family: var(--markdown-font-sans);
 }
 
 .md-editor-preview {

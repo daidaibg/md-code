@@ -21,6 +21,7 @@ import { MarkdownPluginRegistry } from './pluginRegistry';
 import { admonitionPlugin } from '@/markdown/plugins/admonition';
 import { mermaidFencePlugin } from '@/markdown/plugins/mermaidFence';
 import { headingAnchorPlugin } from '@/markdown/plugins/headingAnchors';
+import { sourceLinesPlugin } from '@/markdown/plugins/sourceLines';
 
 const languages = {
   bash,
@@ -101,5 +102,6 @@ export function createMarkdownEngine(
 
   extend?.(registry);
   registry.install(markdown);
+  markdown.use(sourceLinesPlugin);
   return markdown;
 }

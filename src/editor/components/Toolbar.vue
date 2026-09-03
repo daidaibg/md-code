@@ -60,6 +60,16 @@ const formatTools: SimpleTool[] = [
   { command: 'link', icon: 'link', title: '链接' }
 ];
 
+const viewModes: { mode: EditorMode; icon: ToolbarIconName; label: string }[] = [
+  { mode: 'preview', icon: 'preview', label: '仅预览' },
+  { mode: 'split', icon: 'split', label: '编辑与预览' },
+  { mode: 'editor', icon: 'editor', label: '仅编辑' }
+];
+
+function selectMode(mode: EditorMode): void {
+  if (mode !== props.mode) emit('update:mode', mode);
+}
+
 function simple(command: SimpleToolbarCommand): void {
   emit('command', { type: 'simple', command });
 }
@@ -141,47 +151,32 @@ function admonition(kind: AdmonitionKind): void {
       />
       <span class="divider" aria-hidden="true" />
       <button
-        v-if="mode !== 'editor'"
         type="button"
         class="tool-button"
-        :class="{ active: tocOpen }"
-        title="显示或隐藏目录"
+        :class="{ active: mode !== 'editor' && tocOpen }"
+        :disabled="mode === 'editor'"
+        :title="mode === 'editor' ? '切换到预览后可显示目录' : '显示或隐藏目录'"
         aria-label="显示或隐藏目录"
-        :aria-pressed="tocOpen"
+        :aria-pressed="mode !== 'editor' && tocOpen"
         @click="emit('toggle-toc')"
       >
         <ToolbarIcon name="toc" />
       </button>
-      <button
-        type="button"
-        class="tool-button"
-        :class="{ active: mode === 'preview' }"
-        title="仅预览"
-        aria-label="切换到仅预览"
-        @click="emit('update:mode', 'preview')"
-      >
-        <ToolbarIcon name="preview" />
-      </button>
-      <button
-        type="button"
-        class="tool-button"
-        :class="{ active: mode === 'split' }"
-        title="编辑与预览"
-        aria-label="切换到编辑与预览"
-        @click="emit('update:mode', 'split')"
-      >
-        <ToolbarIcon name="split" />
-      </button>
-      <button
-        type="button"
-        class="tool-button"
-        :class="{ active: mode === 'editor' }"
-        title="仅编辑"
-        aria-label="切换到仅编辑"
-        @click="emit('update:mode', 'editor')"
-      >
-        <ToolbarIcon name="editor" />
-      </button>
+      <div class="view-mode-group" role="group" aria-label="文档视图模式">
+        <button
+          v-for="view in viewModes"
+          :key="view.mode"
+          type="button"
+          class="tool-button"
+          :class="{ active: mode === view.mode }"
+          :title="view.label"
+          :aria-label="`切换到${view.label}`"
+          :aria-pressed="mode === view.mode"
+          @click="selectMode(view.mode)"
+        >
+          <ToolbarIcon :name="view.icon" />
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -190,13 +185,13 @@ function admonition(kind: AdmonitionKind): void {
 .toolbar {
   position: relative;
   z-index: 20;
-  min-height: 42px;
+  min-height: 34px;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 2px 8px;
   border-bottom: 1px solid var(--border-color);
-  background: var(--panel-bg);
+  background: var(--chrome-bg);
 }
 
 .editing-tools,
@@ -226,8 +221,9 @@ function admonition(kind: AdmonitionKind): void {
 }
 
 .tool-button {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -235,7 +231,7 @@ function admonition(kind: AdmonitionKind): void {
   border-radius: 4px;
   color: var(--text-secondary);
   background: transparent;
-  cursor: default;
+  cursor: pointer;
 
   &:hover,
   &:focus-visible,
@@ -246,8 +242,21 @@ function admonition(kind: AdmonitionKind): void {
   }
 
   &.active {
+    color: var(--accent);
     box-shadow: inset 0 -2px 0 var(--accent);
   }
+
+  &:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  &:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; box-shadow: none; }
+}
+
+.view-mode-group {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
 }
 
 .divider {

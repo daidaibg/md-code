@@ -1,12 +1,13 @@
 ﻿<script setup lang="ts">
 import type { TocItem } from '@/types/editor';
+import ScrollArea from '@/components/scroll/ScrollArea.vue';
 
 defineProps<{ items: TocItem[]; activeId: string | null }>();
 const emit = defineEmits<{ navigate: [id: string] }>();
 </script>
 
 <template>
-  <aside class="markdown-toc" aria-label="Markdown 目录">
+  <ScrollArea class="markdown-toc" label="Markdown 目录">
     <div class="toc-header">目录</div>
     <nav v-if="items.length" class="toc-list">
       <button
@@ -23,16 +24,16 @@ const emit = defineEmits<{ navigate: [id: string] }>();
       </button>
     </nav>
     <p v-else class="toc-empty">文档中暂无标题</p>
-  </aside>
+  </ScrollArea>
 </template>
 
 <style scoped lang="scss">
 .markdown-toc {
   height: 100%;
   min-width: 0;
-  overflow: auto;
+  overflow: hidden;
   border-left: 1px solid var(--border-color);
-  background: var(--panel-muted);
+  background: var(--toc-bg);
 }
 
 .toc-header {
@@ -45,7 +46,7 @@ const emit = defineEmits<{ navigate: [id: string] }>();
   padding: 0 16px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  background: var(--panel-muted);
+  background: var(--toc-bg);
   font-size: 13px;
   font-weight: 700;
 }

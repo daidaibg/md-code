@@ -115,8 +115,8 @@ defineExpose({ close, show });
 }
 
 .dropdown-trigger {
-  min-width: 32px;
-  height: 32px;
+  min-width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -124,7 +124,7 @@ defineExpose({ close, show });
   border-radius: 4px;
   color: var(--text-secondary);
   background: transparent;
-  cursor: default;
+  cursor: pointer;
 
   &:hover,
   &:focus-visible,

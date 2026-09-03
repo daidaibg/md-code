@@ -154,5 +154,7 @@ defineProps<{ name: ToolbarIconName }>();
   width: 20px;
   height: 20px;
   display: block;
+  flex-shrink: 0;
+  overflow: visible;
 }
 </style>

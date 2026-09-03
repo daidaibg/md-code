@@ -42,7 +42,7 @@ export function codeThemeClass(id: CodeThemeName): string {
 [
   ['default', '默认', 'default-theme'],
   ['github', 'GitHub', 'github-theme'],
-  ['vuepress', 'VuePress', 'vuepress-theme'],
+  ['vuepress', 'VuePress 2', 'vuepress-official-theme'],
   ['mk-cute', 'MK Cute', 'mk-cute-theme'],
   ['smart-blue', 'Smart Blue', 'smart-blue-theme'],
   ['cyanosis', 'Cyanosis', 'cyanosis-theme']

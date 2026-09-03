@@ -1,0 +1,83 @@
+// Upstream highlighter-helper layout, adapted to our existing Highlight.js DOM.
+.md-editor.markdown-preview-host .md-editor-preview.vuepress-official-theme {
+  .md-editor-code {
+    position: relative;
+    margin: 12px 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 6px;
+    background: var(--vp-c-bg-alt);
+    box-shadow: none;
+  }
+  // VuePress uses a quiet language/copy action, not traffic-light decorations.
+  .md-editor-code .md-editor-code-flag { display: none; }
+  .md-editor-code .md-editor-code-head {
+    position: relative;
+    top: auto;
+    display: flex;
+    justify-content: flex-end;
+    height: auto;
+    min-height: 30px;
+    padding: 6px 12px 0;
+    border: 0;
+    color: var(--vp-c-text-subtle);
+    background: transparent;
+    font: 12px/1.5 var(--markdown-font-sans);
+  }
+  .md-editor-code-action { display: flex; align-items: center; gap: 8px; }
+  .md-editor-code .md-editor-copy-button {
+    min-width: 36px;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--vp-c-text-mute);
+    background: transparent;
+    line-height: 1.5;
+    cursor: pointer;
+  }
+  .md-editor-code .md-editor-copy-button:hover,
+  .md-editor-code .md-editor-copy-button:focus-visible {
+    border-color: var(--vp-c-border);
+    color: var(--vp-c-accent);
+    background: var(--vp-c-control-hover);
+  }
+  pre, .md-editor-code pre {
+    position: relative;
+    overflow-x: auto;
+    margin: 12px 0;
+    padding: 16px 20px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--vp-c-bg-alt);
+    font: 14px/1.6 var(--markdown-font-mono);
+    text-align: left;
+    direction: ltr;
+    white-space: pre;
+    word-spacing: normal;
+    word-break: normal;
+    overflow-wrap: normal;
+    tab-size: 4;
+    hyphens: none;
+  }
+  .md-editor-code pre { margin: 0; padding-top: 8px; }
+  pre code, .md-editor-code pre code {
+    display: block;
+    width: max-content;
+    min-width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    color: var(--vp-c-text);
+    background: transparent;
+    font: 14px/1.6 var(--markdown-font-mono);
+    white-space: pre;
+    word-break: normal;
+    overflow-wrap: normal;
+    -webkit-font-smoothing: auto;
+  }
+  @container vuepress-content (max-width: 419px) {
+    > .md-editor-code { margin-inline: -24px; border-radius: 0; }
+    > .md-editor-code pre { border-radius: 0; }
+  }
+}

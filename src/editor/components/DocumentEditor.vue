@@ -1,8 +1,11 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import ImageUploader from '@/editor/components/ImageUploader.vue';
+import ScrollArea from '@/components/scroll/ScrollArea.vue';
 import Toolbar from '@/editor/components/Toolbar.vue';
 import { PaneResizeManager } from '@/editor/layout/PaneResizeManager';
+import { useContentScrollSync } from '@/editor/scroll/useContentScrollSync';
+import type { ContentScrollPosition } from '@/editor/scroll/contentScroll';
 import MonacoEditor from '@/editor/monaco/MonacoEditor.vue';
 import { previewKindForLanguage, supportsPreview } from '@/editor/language/languageManager';
 import MarkdownPreview from '@/markdown/components/MarkdownPreview.vue';
@@ -30,7 +33,8 @@ interface MonacoEditorApi {
   formatDocument: () => void;
   runCommand: (command: EditorCommand) => boolean;
   insertText: (text: string) => void;
-  setScrollRatio: (ratio: number) => void;
+  getScrollPosition: () => ContentScrollPosition;
+  scrollToSourcePosition: (position: ContentScrollPosition) => void;
   layout: () => void;
 }
 
@@ -70,7 +74,6 @@ const tocOpen = ref(true);
 const activeTocId = ref<string | null>(null);
 const editorPaneWidth = ref<number | null>(null);
 const tocPaneWidth = ref(230);
-let scrollSource: 'editor' | 'preview' | null = null;
 const resizeTarget = ref<'editor-preview' | 'toc' | null>(null);
 let layoutFrame = 0;
 let stageResizeObserver: ResizeObserver | undefined;
@@ -114,10 +117,12 @@ const htmlSource = computed(() =>
   previewKind.value === 'html' ? props.document.content : '<!doctype html><html><body></body></html>'
 );
 
-function updateMode(mode: EditorMode): void {
-  if (!previewSupported.value && mode !== 'editor') return;
+async function updateMode(mode: EditorMode): Promise<void> {
+  if (mode === effectiveMode.value || (!previewSupported.value && mode !== 'editor')) return;
   emit('update:mode', mode);
-  void nextTick(() => monacoEditor.value?.layout());
+  await nextTick();
+  monacoEditor.value?.layout();
+  if (mode !== 'preview') monacoEditor.value?.focus();
 }
 
 async function ensureEditor(): Promise<MonacoEditorApi | undefined> {
@@ -142,28 +147,18 @@ function insertUploadedImage(markdown: string): void {
   monacoEditor.value?.insertText(markdown);
 }
 
-function setPreviewScrollRatio(ratio: number): void {
-  const element = previewScroll.value;
-  if (!element || scrollSource === 'preview') return;
-  const range = element.scrollHeight - element.clientHeight;
-  scrollSource = 'editor';
-  element.scrollTop = Math.max(0, Math.min(1, ratio)) * Math.max(0, range);
-  requestAnimationFrame(() => {
-    if (scrollSource === 'editor') scrollSource = null;
-  });
-}
+const scrollSync = useContentScrollSync({
+  preview: previewScroll,
+  editor: monacoEditor,
+  enabled: () => effectiveMode.value === 'split' && previewKind.value === 'markdown',
+  source: () => props.document.content
+});
 
 function onPreviewScroll(): void {
   const element = previewScroll.value;
-  if (!element || scrollSource === 'editor') return;
-  const range = element.scrollHeight - element.clientHeight;
-  const ratio = range > 0 ? element.scrollTop / range : 0;
-  scrollSource = 'preview';
-  monacoEditor.value?.setScrollRatio(ratio);
+  if (!element) return;
   updateActiveHeading(element);
-  requestAnimationFrame(() => {
-    if (scrollSource === 'preview') scrollSource = null;
-  });
+  scrollSync.onPreviewScroll();
 }
 
 function updateActiveHeading(root: HTMLElement): void {
@@ -183,7 +178,7 @@ function navigateToHeading(id: string): void {
   const heading = root?.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
   if (!root || !heading) return;
   activeTocId.value = id;
-  root.scrollTo({ top: heading.offsetTop - 18, behavior: 'smooth' });
+  root.scrollTo({ top: heading.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 18, behavior: 'smooth' });
 }
 
 function scheduleEditorLayout(): void {
@@ -251,8 +246,18 @@ const tocResizeManager = new PaneResizeManager({
 });
 
 function constrainPaneSizes(): void {
-  tocResizeManager.constrain();
-  editorPreviewResizeManager.constrain();
+  if (showToc.value) tocResizeManager.constrain();
+  if (showEditor.value && showPreview.value) {
+    if (editorPaneWidth.value === null) {
+      const stageWidth = editorStage.value?.clientWidth ?? 0;
+      const tocSpace = showToc.value ? tocPaneWidth.value + PANE_HANDLE_WIDTH : 0;
+      editorPaneWidth.value = Math.max(
+        MIN_EDITOR_PANE_WIDTH,
+        (stageWidth - tocSpace - PANE_HANDLE_WIDTH) / 2
+      );
+    }
+    editorPreviewResizeManager.constrain();
+  }
 }
 
 async function focusSelection(selection: TextSelection): Promise<void> {
@@ -285,7 +290,7 @@ async function focus(): Promise<void> {
   (await ensureEditor())?.focus();
 }
 
-watch([showToc, showPreview], () => void nextTick(constrainPaneSizes));
+watch([showToc, showPreview, showEditor], () => void nextTick(constrainPaneSizes));
 
 onMounted(() => {
   if (!editorStage.value) return;
@@ -337,7 +342,7 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
           :settings="editorSettings"
           @update:model-value="emit('update:content', $event)"
           @cursor-change="emit('update:cursor', $event)"
-          @scroll-ratio="setPreviewScrollRatio"
+          @content-scroll="scrollSync.onEditorScroll"
         />
       </div>
 
@@ -354,7 +359,7 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
         @keydown.right.prevent="editorPreviewResizeManager.resizeBy(24)"
       />
 
-      <div v-if="showPreview" ref="previewScroll" class="preview-pane" @scroll.passive="onPreviewScroll">
+      <ScrollArea v-if="showPreview" class="preview-pane" label="文档预览" :fill-content="previewKind === 'html'" @viewport-change="previewScroll = $event" @scroll="onPreviewScroll">
         <MarkdownPreview
           v-if="previewKind === 'markdown'"
           :source="document.content"
@@ -372,7 +377,7 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
           :srcdoc="htmlSource"
         />
         <pre v-else-if="previewKind === 'json'" class="json-preview"><code>{{ formattedJson }}</code></pre>
-      </div>
+      </ScrollArea>
 
       <div
         v-if="showToc"
@@ -441,8 +446,10 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
 .preview-pane {
   position: relative;
   z-index: 0;
-  overflow: auto;
-  background: var(--preview-canvas-bg);
+  overflow: hidden;
+  // Content synchronization owns the anchor when images/diagrams change height.
+  overflow-anchor: none;
+  background: var(--preview-bg);
 }
 
 .toc-pane {

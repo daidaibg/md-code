@@ -3,6 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { executeMarkdownCommand } from '@/editor/commands/markdownCommandLayer';
 import { getOrCreateModel } from '@/editor/monaco/modelRegistry';
 import { monaco } from '@/editor/monaco/setupMonaco';
+import type { ContentScrollPosition } from '@/editor/scroll/contentScroll';
 import type { MonacoSettings } from '@/store/settings';
 import type {
   CursorPosition,
@@ -25,7 +26,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   'cursor-change': [cursor: CursorPosition];
-  'scroll-ratio': [ratio: number];
+  'content-scroll': [];
 }>();
 
 const container = ref<HTMLDivElement>();
@@ -37,6 +38,7 @@ let cursorDisposable: monaco.IDisposable | undefined;
 let scrollDisposable: monaco.IDisposable | undefined;
 let applyingExternalValue = false;
 let applyingExternalScroll = false;
+let expectedScrollTop: number | null = null;
 
 function editorTheme(): string {
   return props.theme === 'dark' ? 'vs-dark' : 'vs';
@@ -65,10 +67,21 @@ function settingsOptions(): monaco.editor.IEditorOptions & monaco.editor.IGlobal
   };
 }
 
-function currentScrollRatio(): number {
-  if (!editor) return 0;
-  const range = editor.getScrollHeight() - editor.getLayoutInfo().height;
-  return range > 0 ? editor.getScrollTop() / range : 0;
+function getScrollPosition(): ContentScrollPosition {
+  if (!editor || !model) return { line: 1, edge: 'start' };
+  const top = editor.getScrollTop();
+  const max = Math.max(0, editor.getScrollHeight() - editor.getLayoutInfo().height);
+  // Use Monaco's rendered line positions: word wrap, folding and font settings
+  // mean logical lines do not share a constant pixel height.
+  // Visible ranges skip folded lines; searching equal line offsets would pick
+  // the last hidden source line instead of the visible fold header.
+  const line = editor.getVisibleRanges()[0]?.startLineNumber ?? 1;
+  const start = editor.getTopForLineNumber(line);
+  const end = editor.getBottomForLineNumber(line);
+  return {
+    line: line + Math.max(0, Math.min(1, (top - start) / Math.max(1, end - start))),
+    edge: top <= 1 ? 'start' : max > 1 && top >= max - 1 ? 'end' : undefined
+  };
 }
 
 onMounted(() => {
@@ -112,8 +125,11 @@ onMounted(() => {
     });
   });
 
-  scrollDisposable = editor.onDidScrollChange(() => {
-    if (!applyingExternalScroll) emit('scroll-ratio', currentScrollRatio());
+  scrollDisposable = editor.onDidScrollChange(event => {
+    if (!event.scrollTopChanged || applyingExternalScroll) return;
+    if (expectedScrollTop !== null && Math.abs(event.scrollTop - expectedScrollTop) <= 1) return;
+    expectedScrollTop = null;
+    emit('content-scroll');
   });
 
   resizeObserver = new ResizeObserver(() => editor?.layout());
@@ -207,14 +223,21 @@ async function focusSelection(selection: TextSelection): Promise<void> {
   editor.focus();
 }
 
-function setScrollRatio(ratio: number): void {
-  if (!editor) return;
-  const range = editor.getScrollHeight() - editor.getLayoutInfo().height;
+function scrollToSourcePosition(position: ContentScrollPosition): void {
+  if (!editor || !model) return;
+  const line = Math.max(1, Math.min(model.getLineCount(), Math.floor(position.line)));
+  const start = editor.getTopForLineNumber(line);
+  const height = editor.getBottomForLineNumber(line) - start;
+  const max = Math.max(0, editor.getScrollHeight() - editor.getLayoutInfo().height);
+  const top = position.edge === 'start' ? 0 : position.edge === 'end' ? max
+    : start + Math.max(0, Math.min(1, position.line - line)) * height;
   applyingExternalScroll = true;
-  editor.setScrollTop(Math.max(0, Math.min(1, ratio)) * Math.max(0, range));
-  requestAnimationFrame(() => {
+  try {
+    editor.setScrollTop(Math.max(0, Math.min(max, top)), monaco.editor.ScrollType.Immediate);
+    expectedScrollTop = editor.getScrollTop();
+  } finally {
     applyingExternalScroll = false;
-  });
+  }
 }
 
 function layout(): void {
@@ -239,7 +262,8 @@ defineExpose({
   formatDocument,
   runCommand,
   insertText,
-  setScrollRatio,
+  getScrollPosition,
+  scrollToSourcePosition,
   layout
 });
 </script>
@@ -258,25 +282,4 @@ defineExpose({
   background: var(--editor-bg);
 }
 
-.monaco-editor-host :deep(.find-widget .find-actions),
-.monaco-editor-host :deep(.find-widget .find-part .controls) {
-  align-items: center;
-}
-
-.monaco-editor-host :deep(.find-widget .button),
-.monaco-editor-host :deep(.find-widget .monaco-custom-toggle) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.monaco-editor-host :deep(.find-widget .matchesCount) {
-  display: flex;
-  align-items: center;
-  line-height: normal;
-}
-
-.monaco-editor-host :deep(.find-widget .codicon-widget-close) {
-  top: 7.5px;
-}
 </style>
