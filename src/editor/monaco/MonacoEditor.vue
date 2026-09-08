@@ -58,7 +58,6 @@ function onPaste(event: ClipboardEvent): void {
   const path = props.documentPath ?? null;
   // Track the paste location while disk I/O is pending, even if the user keeps typing.
   const markers = targetModel.deltaDecorations([], [{ range: selection, options: {
-    description: 'image-paste-anchor',
     stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges
   } }]);
   void (async () => {

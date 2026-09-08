@@ -49,6 +49,13 @@ const emit = defineEmits<{
 const host = ref<HTMLElement>();
 const floatingLayer = ref<HTMLElement>();
 let floatingObserver: MutationObserver | undefined;
+function relocateFloatingElements(): void {
+  const layer = floatingLayer.value;
+  if (!layer) return;
+  host.value?.querySelectorAll<HTMLElement>('.milkdown-toolbar, .milkdown-link-preview, .milkdown-link-edit').forEach(element => {
+    layer.appendChild(element);
+  });
+}
 const scrollViewport = ref<HTMLElement>();
 const themeScope = `note-visual-${useId().replace(/[^a-z0-9_-]/giu, '-')}`;
 const codeCss = computed(() => scopeVisualCodeCss(resolveCodeThemeCss(props.codeTheme, props.theme), `.${themeScope}`));
@@ -404,14 +411,10 @@ function runCommand(command: EditorCommand): void {
 
 onMounted(async () => {
   if (!host.value) return;
-  // Crepe appends its toolbar next to the document before asynchronously
-  // positioning it. Keep that transient geometry outside the scroll viewport.
-  floatingObserver = new MutationObserver(() => {
-    if (!floatingLayer.value) return;
-    host.value?.querySelectorAll<HTMLElement>('.milkdown-toolbar').forEach(element => {
-      floatingLayer.value!.appendChild(element);
-    });
-  });
+  // Tooltip providers append beside the document and measure before their
+  // asynchronous position update. Relocate synchronously in our plugin below;
+  // the observer also catches providers that append from throttled callbacks.
+  floatingObserver = new MutationObserver(relocateFloatingElements);
   floatingObserver.observe(host.value, { childList: true, subtree: true });
   document.addEventListener('pointerdown', onLanguageOutside, true);
   window.addEventListener('resize', closeLanguageMenu);
@@ -429,7 +432,10 @@ onMounted(async () => {
       defaultValue: props.source,
       featureConfigs: {
         [Crepe.Feature.BlockEdit]: {
-          blockHandle: { floatingUIOptions: { strategy: 'fixed' } }
+          blockHandle: {
+            root: floatingLayer.value,
+            floatingUIOptions: { strategy: 'absolute' }
+          }
         },
         [Crepe.Feature.CodeMirror]: {
           // Map editable syntax tokens to the same palette classes as Markdown preview.
@@ -488,16 +494,20 @@ onMounted(async () => {
       }))
       // Preserve source soft breaks, but display them as line breaks for notes.
       .use($view(hardbreakSchema.node, () => () => ({ dom: document.createElement('br') })))
-      .use($prose(ctx => new Plugin({ view: () => ({ update: (view, previous) => {
-        void nextTick(updateSuggestions);
-        if (!ready.value || disposed || applyingSource || view.state.doc.eq(previous.doc)) return;
-        if (unsupportedReason) { emit('unavailable', unsupportedReason); return; }
-        // Synchronous publication avoids losing the last keystroke on tab/window close.
-        const source = ctx.get(serializerCtx)(view.state.doc);
-        lastSource = source;
-        emit('update:source', source);
-        updateHeadings();
-      } }) })));
+      .use($prose(ctx => new Plugin({ view: () => {
+        relocateFloatingElements();
+        return { update: (view, previous) => {
+          relocateFloatingElements();
+          void nextTick(updateSuggestions);
+          if (!ready.value || disposed || applyingSource || view.state.doc.eq(previous.doc)) return;
+          if (unsupportedReason) { emit('unavailable', unsupportedReason); return; }
+          // Synchronous publication avoids losing the last keystroke on tab/window close.
+          const source = ctx.get(serializerCtx)(view.state.doc);
+          lastSource = source;
+          emit('update:source', source);
+          updateHeadings();
+        } };
+      } })));
     await crepe.create();
     if (disposed) { await crepe.destroy(); return; }
     if (unsupportedReason) { await crepe.destroy(); throw new Error(unsupportedReason); }
@@ -560,7 +570,7 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
     <MarkdownToc v-if="tocOpen" class="visual-toc" :items="headings" :active-id="activeHeading" @navigate="navigateHeading" />
     </div>
     <ImageUploader ref="imageUploader" :document-path="documentPath" @insert="insertMarkdown" />
-    <div class="visual-host visual-floating-layer" :class="{ 'md-editor-dark': theme === 'dark' }">
+    <div class="visual-host visual-floating-layer" :class="{ 'md-editor-dark': theme === 'dark' }" @mousedown="blockDrag.start" @dragstart.capture="blockDrag.preventNativeDrag">
       <div ref="floatingLayer" class="milkdown" />
     </div>
     <Teleport to="body">
@@ -602,11 +612,16 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
 .visual-toc { min-height: 0; }
 .visual-floating-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; background: transparent; overflow: clip; }
 .visual-floating-layer > .milkdown { position: absolute; inset: 0; background: transparent; }
+.visual-floating-layer :deep(.milkdown-toolbar),
+.visual-floating-layer :deep(.milkdown-link-preview),
+.visual-floating-layer :deep(.milkdown-link-edit),
+.visual-floating-layer :deep(.milkdown-block-handle) { position: absolute; top: 0; left: 0; pointer-events: auto; }
 .visual-floating-layer :deep(.milkdown-toolbar) { pointer-events: auto; border: 1px solid var(--border-color); color: var(--text-primary); box-shadow: 0 4px 14px #0002; }
 .visual-floating-layer :deep(.milkdown-toolbar .toolbar-item svg) { color: var(--text-primary); fill: currentColor; }
 .visual-floating-layer :deep(.milkdown-toolbar .toolbar-item.active svg),
 .visual-floating-layer :deep(.milkdown-toolbar .toolbar-item:hover svg) { color: var(--accent); fill: currentColor; }
-.visual-host :deep(.milkdown-block-handle) { position: fixed; transition: opacity 0.2s; }
+.visual-floating-layer :deep(.milkdown-block-handle) { transition: opacity 0.2s; }
+.visual-floating-layer :deep(.milkdown-block-handle[data-show='false']) { pointer-events: none; }
 .note-visual-editor:has(.milkdown-link-preview[data-show='true']) :deep(.milkdown-toolbar),
 .note-visual-editor:has(.milkdown-link-edit[data-show='true']) :deep(.milkdown-toolbar) { display: none; }
 .code-language-menu { position: fixed; z-index: 10030; display: flex; flex-direction: column; width: min(300px, calc(100vw - 16px)); padding: 8px; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 8px; background: var(--panel-bg); color: var(--text-primary); box-shadow: 0 6px 22px #0003; font-size: 13px; }
