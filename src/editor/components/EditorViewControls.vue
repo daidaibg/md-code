@@ -9,6 +9,7 @@ defineProps<{
   tocOpen: boolean;
   previewTheme: PreviewThemeName;
   codeTheme: CodeThemeName;
+  visual?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -33,13 +34,14 @@ const viewModes: { mode: EditorMode; icon: ToolbarIconName; label: string }[] = 
     <button
       type="button"
       class="tool-button"
-      :class="{ active: mode !== 'editor' && tocOpen }"
-      :disabled="mode === 'editor'"
-      :title="mode === 'editor' ? '切换到预览后可显示目录' : '显示或隐藏目录'"
+      :class="{ active: (visual || mode !== 'editor') && tocOpen }"
+      :disabled="!visual && mode === 'editor'"
+      :title="!visual && mode === 'editor' ? '切换到预览后可显示目录' : '显示或隐藏目录'"
+      :aria-pressed="(visual || mode !== 'editor') && tocOpen"
       aria-label="显示或隐藏目录"
       @click="emit('toggle-toc')"
     ><ToolbarIcon name="toc" /></button>
-    <div class="view-mode-group" role="group" aria-label="文档视图模式">
+    <div v-if="!visual" class="view-mode-group" role="group" aria-label="文档视图模式">
       <button
         v-for="view in viewModes"
         :key="view.mode"

@@ -71,7 +71,40 @@
     > :last-child { margin-block-end: 0; }
   }
 
-  .md-editor-preview {
+  // Match the specificity of theme-qualified prose rules (including :not()).
+  // Otherwise their paragraph margins override the editable-cell reset below.
+  .md-editor-preview.md-editor-preview {
+    // ProseMirror's table defaults (100% width, fixed columns and top-aligned
+    // cells) differ from Markdown output. Use the same compact geometry in both.
+    table {
+      display: table;
+      width: auto;
+      min-width: min(360px, 100%);
+      max-width: 100%;
+      table-layout: auto;
+      border-collapse: collapse;
+    }
+    table th, table td {
+      padding: 6px 12px;
+      vertical-align: middle;
+      font-size: 16px;
+      line-height: 1.5;
+      // Table-cell height is a minimum: multiline content can still grow.
+      // Keep empty preview rows as tall as an editable empty paragraph.
+      height: 37px;
+      box-sizing: border-box;
+    }
+    // Editable cells contain paragraphs whereas preview cells contain inline
+    // text. Paragraph margins must not increase row height in the editor.
+    table th > p, table td > p {
+      margin: 0;
+      padding: 0;
+      min-height: 1.5em;
+      font-size: inherit;
+      line-height: inherit;
+    }
+    table th > p + p, table td > p + p { margin-top: 4px; }
+
     // Mermaid measures HTML labels before building its SVG geometry. Keep
     // those labels independent of Markdown paragraph margins/line spacing,
     // both during measurement and after insertion into the preview.
@@ -89,6 +122,47 @@
       // parent. Wrap inside that measured width instead of clipping text.
       white-space: normal;
       overflow-wrap: anywhere;
+    }
+  }
+
+  // Shared by visual editing and source preview. Crepe otherwise dilutes the
+  // table border to 20% opacity, making the default theme's grid almost invisible.
+  .md-editor-preview.default-theme {
+    table { border-collapse: collapse; }
+    table th, table td {
+      border: 1px solid color-mix(in srgb, var(--md-theme-color, var(--preview-text)) 26%, var(--md-theme-bg-color, var(--preview-bg)));
+    }
+  }
+
+  // Default reading theme: use a quiet GitHub-style surface in light mode.
+  // Share the palette between rendered fences and the editable code node.
+  &:not(.md-editor-dark) .md-editor-preview.default-theme {
+    --md-theme-code-block-bg-color: #f6f8fa;
+    --md-theme-code-before-bg-color: #f6f8fa;
+    --md-theme-code-block-color: #24292f;
+    --md-theme-code-active-color: #0969da;
+
+    .md-editor-code, .milkdown-code-block {
+      background: var(--md-theme-code-block-bg-color);
+      color: var(--md-theme-code-block-color);
+      box-shadow: inset 0 0 0 1px #d0d7de80;
+    }
+    .md-editor-code-head,
+    .milkdown-code-block .language-button,
+    .milkdown-code-block .tools-button-group button { color: #57606a; }
+
+    .milkdown-code-block .cm-editor,
+    .milkdown-code-block .cm-content.hljs {
+      background: transparent;
+      color: var(--md-theme-code-block-color);
+      caret-color: var(--md-theme-code-block-color);
+    }
+    .milkdown-code-block .cm-cursor { border-left-color: var(--md-theme-code-block-color); }
+    .milkdown-code-block .cm-selectionBackground { background: #0969da33; }
+    .milkdown-code-block .milkdown-code-block-placeholder,
+    .milkdown-code-block .milkdown-code-block-placeholder code {
+      background: transparent;
+      color: var(--md-theme-code-block-color);
     }
   }
 }

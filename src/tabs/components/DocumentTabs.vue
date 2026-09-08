@@ -126,7 +126,6 @@ async function openContextMenu(event: MouseEvent, document: EditorDocument): Pro
   contextMenuY.value = event.clientY;
   contextDocumentId.value = document.id;
   contextUtility.value = null;
-  emit('activate', document.id);
 
   await nextTick();
   const menu = contextMenuRoot.value;
@@ -147,7 +146,6 @@ async function openUtilityContextMenu(event: MouseEvent, utility: UtilityTab): P
   contextMenuY.value = event.clientY;
   contextDocumentId.value = null;
   contextUtility.value = utility;
-  emit(utility === 'settings' ? 'activate-settings' : 'activate-notes');
 
   await nextTick();
   const menu = contextMenuRoot.value;

@@ -41,7 +41,7 @@ export function registerCodeThemeCss(id: string, css: CodeThemePair): void {
 
 function removeHighlightSurface(css: string): string {
   return css.replace(
-    /((?:^|\})\s*\.hljs\s*\{)([^}]*)(\})/gu,
+    /(\.hljs\s*\{)([^}]*)(\})/gu,
     (_match, opening: string, declarations: string, closing: string) => {
       const syntaxOnly = declarations
         .split(';')

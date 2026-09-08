@@ -1,5 +1,6 @@
 import { createMemoryHistory, createRouter } from 'vue-router';
 import AppShell from '@/app/AppShell.vue';
+import { readWorkspaceSession } from '@/app/workspaceSession';
 
 export const router = createRouter({
   history: createMemoryHistory(),
@@ -7,6 +8,15 @@ export const router = createRouter({
     {
       path: '/',
       name: 'editor',
+      beforeEnter: (_to, from) => {
+        // Restore only on startup, never intercept an explicit click on a document tab.
+        if (from.matched.length) return;
+        const session = readWorkspaceSession();
+        if (session.activeWorkspace === 'settings') {
+          return { name: 'settings', params: { section: session.settingsSection } };
+        }
+        if (session.activeWorkspace === 'notes') return { name: 'notes' };
+      },
       component: AppShell
     },
     {

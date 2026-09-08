@@ -318,7 +318,7 @@ onBeforeUnmount(() => {
   if (layoutFrame) cancelAnimationFrame(layoutFrame);
 });
 
-defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDocument });
+defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDocument, runCommand });
 </script>
 
 <template>
@@ -347,6 +347,7 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
         <MonacoEditor
           ref="monacoEditor"
           :document-id="document.id"
+          :document-path="document.path"
           :filename="document.filename"
           :model-value="document.content"
           :language="document.language"

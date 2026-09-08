@@ -48,7 +48,7 @@ hljs.registerAliases(['html', 'vue'], { languageName: 'xml' });
 hljs.registerAliases(['sh', 'shell'], { languageName: 'bash' });
 hljs.registerAliases(['yml'], { languageName: 'yaml' });
 
-function highlight(source: string, language: string): string {
+export function highlight(source: string, language: string): string {
   if (language && hljs.getLanguage(language)) {
     return hljs.highlight(source, { language, ignoreIllegals: true }).value;
   }

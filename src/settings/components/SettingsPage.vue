@@ -486,7 +486,7 @@ async function clearWebviewCache(): Promise<void> {
         <section v-else class="settings-card">
           <div class="section-heading">
             <h2>Markdown 图片</h2>
-            <p>上传或裁剪图片时保存为实体文件，不嵌入超长 Data URL。</p>
+            <p>上传、裁剪或复制粘贴的图片保存为实体文件，Monaco 与便签可视化编辑共用此设置。</p>
           </div>
 
           <label class="radio-row">
@@ -499,7 +499,7 @@ async function clearWebviewCache(): Promise<void> {
             />
             <span>
               <strong>当前文档目录下的子文件夹</strong>
-              <small>图片使用相对路径，项目移动后仍可显示。</small>
+              <small>默认保存到当前 .md 文件同级的 images-md 文件夹；便签按便签文件所在目录保存。</small>
             </span>
           </label>
 
@@ -510,7 +510,7 @@ async function clearWebviewCache(): Promise<void> {
               type="text"
               :disabled="imageSaveMode !== 'document'"
               :value="imageSubdirectory"
-              placeholder="images"
+              placeholder="images-md"
               @input="
                 settingsStore.setImageSubdirectory(
                   ($event.target as HTMLInputElement).value

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { executeMarkdownCommand } from '@/editor/commands/markdownCommandLayer';
+import { saveMarkdownImage } from '@/editor/images/saveMarkdownImage';
+import { showDesktopMessage } from '@/filesystem/fileSystemService';
 import { getOrCreateModel } from '@/editor/monaco/modelRegistry';
 import { monaco } from '@/editor/monaco/setupMonaco';
 import type { ContentScrollPosition } from '@/editor/scroll/contentScroll';
@@ -15,6 +17,7 @@ import type {
 
 const props = defineProps<{
   documentId: string;
+  documentPath?: string | null;
   filename: string;
   modelValue: string;
   language: SupportedLanguage;
@@ -39,6 +42,41 @@ let scrollDisposable: monaco.IDisposable | undefined;
 let applyingExternalValue = false;
 let applyingExternalScroll = false;
 let expectedScrollTop: number | null = null;
+
+function onPaste(event: ClipboardEvent): void {
+  if (props.language !== 'markdown' || !editor?.hasTextFocus() || !model) return;
+  const files = [...(event.clipboardData?.items ?? [])]
+    .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+    .map(item => item.getAsFile()).filter((file): file is File => file !== null);
+  if (!files.length) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const targetEditor = editor;
+  const targetModel = model;
+  const selection = targetEditor.getSelection();
+  if (!selection) return;
+  const path = props.documentPath ?? null;
+  // Track the paste location while disk I/O is pending, even if the user keeps typing.
+  const markers = targetModel.deltaDecorations([], [{ range: selection, options: {
+    description: 'image-paste-anchor',
+    stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges
+  } }]);
+  void (async () => {
+    try {
+      const images = await Promise.all(files.map(file => saveMarkdownImage(file, path)));
+      if (editor !== targetEditor || targetModel.isDisposed()) return;
+      const range = targetModel.getDecorationRange(markers[0]!);
+      if (!range) return;
+      targetEditor.pushUndoStop();
+      targetEditor.executeEdits('paste-images', [{ range, text: images.map(image => image.markdown).join('\n'), forceMoveMarkers: true }]);
+      targetEditor.pushUndoStop();
+    } catch (error) {
+      await showDesktopMessage(String(error), '粘贴图片失败');
+    } finally {
+      if (!targetModel.isDisposed()) targetModel.deltaDecorations(markers, []);
+    }
+  })();
+}
 
 function editorTheme(): string {
   return props.theme === 'dark' ? 'vs-dark' : 'vs';
@@ -93,6 +131,9 @@ onMounted(() => {
     content: props.modelValue,
     language: props.language
   });
+  // A cached source model may be older than edits made in the visual note editor.
+  // Synchronize before subscribing, without writing the stale model back to the store.
+  if (model.getValue() !== props.modelValue) model.setValue(props.modelValue);
 
   editor = monaco.editor.create(container.value, {
     model,
@@ -250,6 +291,7 @@ onBeforeUnmount(() => {
   scrollDisposable?.dispose();
   resizeObserver?.disconnect();
   editor?.dispose();
+  editor = undefined;
 });
 
 defineExpose({
@@ -269,7 +311,7 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="container" class="monaco-editor-host" />
+  <div ref="container" class="monaco-editor-host" @paste.capture="onPaste" />
 </template>
 
 <style scoped>

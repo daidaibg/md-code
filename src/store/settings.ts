@@ -24,13 +24,14 @@ interface PersistedSettings {
   newFileDirectory: string;
   imageSaveMode: ImageSaveMode;
   imageSubdirectory: string;
+  imageDirectoryDefaultsVersion: number;
   customImageDirectory: string;
   notesDirectory: string;
   monaco: MonacoSettings;
 }
 
 const STORAGE_KEY = 'md-code-settings-v1';
-const DEFAULT_IMAGE_DIRECTORY = 'images';
+const DEFAULT_IMAGE_DIRECTORY = 'images-md';
 const DEFAULT_MONACO_SETTINGS: MonacoSettings = {
   fontSize: 14,
   lineHeight: 22,
@@ -108,7 +109,10 @@ export const useSettingsStore = defineStore('settings', () => {
   const imageSaveMode = ref<ImageSaveMode>(
     saved.imageSaveMode === 'custom' ? 'custom' : 'document'
   );
-  const imageSubdirectory = ref(saved.imageSubdirectory?.trim() || DEFAULT_IMAGE_DIRECTORY);
+  const previousImageDirectory = saved.imageSubdirectory?.trim();
+  // Upgrade the old default for future images only; existing files/links stay untouched.
+  const imageSubdirectory = ref(!previousImageDirectory || (!saved.imageDirectoryDefaultsVersion && previousImageDirectory === 'images')
+    ? DEFAULT_IMAGE_DIRECTORY : previousImageDirectory);
   const customImageDirectory = ref(saved.customImageDirectory ?? '');
   const notesDirectory = ref(saved.notesDirectory ?? '');
   const monaco = reactive<MonacoSettings>(normalizeMonacoSettings(saved.monaco));
@@ -165,6 +169,7 @@ export const useSettingsStore = defineStore('settings', () => {
         newFileDirectory: newFileDirectory.value.trim(),
         imageSaveMode: imageSaveMode.value,
         imageSubdirectory: normalizedImageSubdirectory.value,
+        imageDirectoryDefaultsVersion: 1,
         customImageDirectory: customImageDirectory.value,
         notesDirectory: notesDirectory.value.trim(),
         monaco: normalizeMonacoSettings(monaco)

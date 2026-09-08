@@ -9,6 +9,7 @@ import RenameDocumentDialog from '@/document/components/RenameDocumentDialog.vue
 import ExternalFileConflictDialog from '@/document/components/ExternalFileConflictDialog.vue';
 import { useDocumentManager } from '@/document/useDocumentManager';
 import { useDesktopWindow } from '@/app/useDesktopWindow';
+import { readWorkspaceSession, saveWorkspaceSession } from '@/app/workspaceSession';
 import DocumentEditor from '@/editor/components/DocumentEditor.vue';
 import SettingsPage from '@/settings/components/SettingsPage.vue';
 import NotePanel from '@/notes/components/NotePanel.vue';
@@ -61,15 +62,26 @@ const documentManager = useDocumentManager();
 const applicationUpdater = useApplicationUpdater();
 const documentEditor = ref<DocumentEditorApi>();
 const notePanel = ref<NotePanelApi>();
-const settingsOpen = ref(route.name === 'settings');
-const notesOpen = ref(route.name === 'notes');
+const savedWorkspace = readWorkspaceSession();
+const settingsOpen = ref(savedWorkspace.settingsOpen || route.name === 'settings');
+const notesOpen = ref(savedWorkspace.notesOpen || route.name === 'notes');
 const settingsSection = ref(
-  typeof route.params.section === 'string' ? route.params.section : 'appearance'
+  typeof route.params.section === 'string' ? route.params.section : savedWorkspace.settingsSection
 );
 const activeWorkspace = ref<'document' | 'settings' | 'notes'>(
   route.name === 'settings' ? 'settings' : route.name === 'notes' ? 'notes' : 'document'
 );
 const recoveryEnabled = typeof window !== 'undefined' && 'localStorage' in window;
+function persistWorkspace(): void {
+  saveWorkspaceSession({
+    settingsOpen: settingsOpen.value,
+    notesOpen: notesOpen.value,
+    activeWorkspace: activeWorkspace.value,
+    settingsSection: settingsSection.value
+  });
+}
+// Save after each UI change; closing to tray does not necessarily fire beforeunload.
+watch([settingsOpen, notesOpen, activeWorkspace, settingsSection], persistWorkspace, { flush: 'post' });
 const previewSupported = computed(() => activeWorkspace.value === 'notes' || (
   activeDocument.value ? supportsPreview(activeDocument.value.language) : false
 ));
@@ -318,6 +330,7 @@ watch(
 );
 
 function onBeforeUnload(event: BeforeUnloadEvent): void {
+  persistWorkspace();
   if (!editorStore.hasModifiedDocuments) return;
   event.preventDefault();
   event.returnValue = '';
@@ -326,6 +339,7 @@ function onBeforeUnload(event: BeforeUnloadEvent): void {
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown);
   window.addEventListener('beforeunload', onBeforeUnload);
+  window.addEventListener('pagehide', persistWorkspace);
   if (import.meta.env.PROD) {
     updateCheckTimer = window.setTimeout(
       () => void applicationUpdater.checkAndDownload(),
@@ -335,8 +349,10 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  persistWorkspace();
   window.removeEventListener('keydown', onGlobalKeydown);
   window.removeEventListener('beforeunload', onBeforeUnload);
+  window.removeEventListener('pagehide', persistWorkspace);
   window.clearTimeout(updateCheckTimer);
 });
 </script>

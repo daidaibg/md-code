@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import ScrollArea from '@/components/scroll/ScrollArea.vue';
 import DocumentEditor from '@/editor/components/DocumentEditor.vue';
@@ -7,10 +7,12 @@ import { PaneResizeManager } from '@/editor/layout/PaneResizeManager';
 import EditorViewControls from '@/editor/components/EditorViewControls.vue';
 import { confirmDesktop } from '@/filesystem/fileSystemService';
 import { useNotesStore, type Note } from '@/store/notes';
-import { broadcastNotesChange, NOTES_CHANGED_EVENT, type NotesChange } from '@/notes/noteService';
+import { broadcastNotesChange, resolveNotesDirectory, NOTES_CHANGED_EVENT, type NotesChange } from '@/notes/noteService';
 import { isTauriRuntime } from '@/filesystem/fileSystemService';
 import type { MonacoSettings } from '@/store/settings';
-import type { CodeThemeName, CursorPosition, EditorDocument, EditorMode, PreviewThemeName, ResolvedTheme } from '@/types/editor';
+import type { CodeThemeName, CursorPosition, EditorCommand, EditorDocument, EditorMode, PreviewThemeName, ResolvedTheme } from '@/types/editor';
+
+const NoteVisualEditor = defineAsyncComponent(() => import('./NoteVisualEditor.vue'));
 
 const props = defineProps<{
   directory: string;
@@ -52,6 +54,11 @@ const sidebarResizeManager = new PaneResizeManager({
   onActiveChange: (active) => { sidebarResizing.value = active; }
 });
 const noteModes = ref<Record<string, EditorMode>>({});
+const visualMode = ref(true);
+const visualUnavailable = ref('');
+const resolvedDirectory = ref('');
+const visualEditor = ref<{ focus: () => void; undo: () => void; redo: () => void; selectAll: () => void }>();
+let directoryRequest = 0;
 const noteCursors = ref<Record<string, CursorPosition>>({});
 const noteTocStates = ref<Record<string, boolean>>({});
 const renamingId = ref<string | null>(null);
@@ -68,6 +75,7 @@ const noteEditor = ref<{
   redo: () => Promise<void>;
   selectAll: () => Promise<void>;
   formatDocument: () => Promise<void>;
+  runCommand: (command: EditorCommand) => Promise<void>;
 }>();
 let saveTimer = 0;
 let pendingNote: Note | null = null;
@@ -89,7 +97,7 @@ const editorDocument = computed<EditorDocument | null>(() => {
   if (!note) return null;
   return {
     id: `note:${note.id}`,
-    path: null,
+    path: resolvedDirectory.value ? `${resolvedDirectory.value.replace(/[\\/]+$/u, '')}/${note.id}.md` : null,
     filename: `${store.noteTitle(note)}.md`,
     language: 'markdown',
     content: note.content,
@@ -98,7 +106,7 @@ const editorDocument = computed<EditorDocument | null>(() => {
     cursor: noteCursors.value[note.id] ?? { lineNumber: 1, column: 1 }
   };
 });
-const currentMode = computed<EditorMode>(() => editorDocument.value?.mode ?? 'editor');
+const currentMode = computed<EditorMode>(() => visualMode.value ? 'editor' : editorDocument.value?.mode ?? 'editor');
 const currentTocOpen = computed(() => activeNote.value
   ? noteTocStates.value[activeNote.value.id] ?? true
   : true
@@ -158,7 +166,24 @@ async function createNote(): Promise<void> {
 }
 
 function updateMode(mode: EditorMode): void {
+  visualMode.value = false;
   if (activeNote.value) noteModes.value[activeNote.value.id] = mode;
+}
+
+function useVisualEditor(): void {
+  visualUnavailable.value = '';
+  visualMode.value = true;
+}
+
+function onVisualUnavailable(reason: string): void {
+  visualUnavailable.value = reason;
+  updateMode('editor');
+}
+
+async function showFind(replace?: boolean): Promise<void> {
+  updateMode('editor');
+  await nextTick();
+  await noteEditor.value?.showFind(replace);
 }
 
 function updateCursor(cursor: CursorPosition): void {
@@ -258,14 +283,26 @@ defineExpose({
   flushPendingSave,
   currentMode,
   setMode: updateMode,
-  focus: async () => { await noteEditor.value?.focus(); },
-  showFind: async (replace?: boolean) => { await noteEditor.value?.showFind(replace); },
-  undo: async () => { await noteEditor.value?.undo(); },
-  redo: async () => { await noteEditor.value?.redo(); },
-  selectAll: async () => { await noteEditor.value?.selectAll(); },
-  formatDocument: async () => { await noteEditor.value?.formatDocument(); }
+  focus: async () => { if (visualMode.value) visualEditor.value?.focus(); else await noteEditor.value?.focus(); },
+  showFind,
+  undo: async () => { if (visualMode.value) visualEditor.value?.undo(); else await noteEditor.value?.undo(); },
+  redo: async () => { if (visualMode.value) visualEditor.value?.redo(); else await noteEditor.value?.redo(); },
+  selectAll: async () => { if (visualMode.value) visualEditor.value?.selectAll(); else await noteEditor.value?.selectAll(); },
+  formatDocument: async () => { updateMode('editor'); await nextTick(); await noteEditor.value?.formatDocument(); }
 });
 
+watch(activeId, () => { visualMode.value = true; visualUnavailable.value = ''; });
+watch(() => props.directory, async directory => {
+  const request = ++directoryRequest;
+  resolvedDirectory.value = '';
+  if (!isTauriRuntime()) return;
+  try {
+    const path = await resolveNotesDirectory(directory);
+    if (request === directoryRequest && !disposed) resolvedDirectory.value = path;
+  } catch (reason) {
+    if (request === directoryRequest && !disposed) visualUnavailable.value = `读取便签图片目录失败：${String(reason)}`;
+  }
+}, { immediate: true });
 watch(() => props.directory, directory => void store.load(directory));
 onMounted(() => {
   bodyResizeObserver = new ResizeObserver(() => {
@@ -310,9 +347,14 @@ onBeforeUnmount(() => {
   <aside class="note-panel" :class="{ detached }" aria-label="Markdown 便签">
     <header class="note-header">
       <strong>便签</strong>
+      <div v-if="activeNote" class="note-editor-switch" role="group" aria-label="便签编辑方式">
+        <button type="button" :class="{ selected: visualMode }" :aria-pressed="visualMode" @click="useVisualEditor">可视化</button>
+        <button type="button" :class="{ selected: !visualMode }" :aria-pressed="!visualMode" @click="updateMode('editor')">源码</button>
+      </div>
       <EditorViewControls
         v-if="activeNote"
         class="note-view-controls"
+        :visual="visualMode"
         :mode="currentMode"
         :toc-open="currentTocOpen"
         :preview-theme="previewTheme"
@@ -325,7 +367,6 @@ onBeforeUnmount(() => {
       <span class="save-state">{{ error ? '保存失败' : saving ? '保存中…' : '自动保存' }}</span>
       <button v-if="!detached" type="button" title="在独立窗口中打开" aria-label="在独立窗口中打开便签" @click="emit('detach')">↗</button>
       <button type="button" title="便签设置" @click="emit('settings')">⚙</button>
-      <button type="button" title="关闭便签" aria-label="关闭便签" @click="emit('close')">×</button>
     </header>
 
     <div ref="noteBody" class="note-body" :class="{ 'sidebar-collapsed': sidebarCollapsed, 'sidebar-resizing': sidebarResizing }" :style="noteBodyStyle">
@@ -392,8 +433,25 @@ onBeforeUnmount(() => {
         @dblclick="sidebarCollapsed = !sidebarCollapsed"
       />
       <section class="note-editor">
+        <p v-if="visualUnavailable" class="visual-unavailable" role="status">{{ visualUnavailable }}</p>
         <template v-if="activeNote && editorDocument">
+          <div v-if="visualMode && isTauriRuntime() && !resolvedDirectory" class="note-placeholder">正在读取便签目录，可切换源码继续编辑…</div>
+          <NoteVisualEditor
+            v-else-if="visualMode"
+            :key="`visual:${activeNote.id}`"
+            ref="visualEditor"
+            :source="activeNote.content"
+            :theme="theme"
+            :toc-open="currentTocOpen"
+            :document-path="editorDocument.path"
+            :preview-theme="previewTheme"
+            :code-theme="codeTheme"
+            @update:source="scheduleSave"
+            @request-source="updateMode('editor')"
+            @unavailable="onVisualUnavailable"
+          />
           <DocumentEditor
+            v-else
             :key="activeNote.id"
             ref="noteEditor"
             :document="editorDocument"
@@ -447,12 +505,13 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .note-header { display: flex; align-items: center; }
-.note-header { gap: 6px; padding: 0 7px 0 12px; border-bottom: 1px solid var(--border-color); background: var(--chrome-bg); overflow: hidden; }
+.note-header { gap: 6px; padding: 0 7px 0 12px; border-bottom: 1px solid var(--border-color); background: var(--chrome-bg); }
 .note-header strong { margin-right: auto; flex: 0 0 auto; font-size: 13px; }
 .note-view-controls { flex: 0 1 auto; }
 .save-state { flex: 0 0 auto; color: var(--text-muted); font-size: 10px; }
 .note-header button, .sidebar-actions button { border: 0; border-radius: 4px; color: var(--text-secondary); background: transparent; cursor: pointer; }
 .note-header > button { width: 25px; height: 25px; font-size: 15px; }
+.note-header > button { flex-shrink: 0; }
 .note-header button:hover { color: var(--text-primary); background: var(--control-hover); }
 .note-body { min-height: 0; min-width: 0; display: grid; }
 .sidebar-resizer { position: relative; z-index: 8; cursor: col-resize; touch-action: none; background: transparent; }
@@ -483,7 +542,18 @@ onBeforeUnmount(() => {
 .note-empty, .note-placeholder { color: var(--text-muted); font-size: 11px; text-align: center; }
 .note-empty { padding: 30px 12px; }
 .note-name-input { min-width: 0; width: 100%; height: 23px; padding: 0 5px; border: 1px solid var(--accent); border-radius: 3px; color: var(--text-primary); background: var(--panel-bg); font: inherit; outline: none; }
-.note-editor { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.note-editor { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.note-editor > :deep(.document-editor), .note-editor > :deep(.note-visual-editor) { flex: 1; min-height: 0; }
+.note-editor-switch { display: flex; gap: 2px; flex-shrink: 0; padding: 2px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--panel-bg); }
+.note-editor-switch button { width: auto; height: 25px; padding: 0 11px; font-size: 12px; border: 1px solid transparent; transition: background .16s, color .16s; }
+.note-editor-switch button.selected { background: color-mix(in srgb, var(--accent) 15%, var(--panel-bg)); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, transparent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.note-editor-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.visual-unavailable { flex: 0 0 auto; margin: 0; padding: 6px 12px; font-size: 12px; color: var(--text-secondary); background: var(--panel-bg); }
+@media (max-width: 980px) {
+  .note-panel { grid-template-rows: auto minmax(0, 1fr); }
+  .note-header { flex-wrap: wrap; min-height: 34px; padding-top: 3px; padding-bottom: 3px; }
+  .note-view-controls { order: 1; flex: 1 0 100%; justify-content: flex-end; }
+}
 .note-placeholder { display: grid; place-items: center; grid-row: 1 / -1; }
 .note-error { position: absolute; right: 12px; bottom: 12px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--danger); border-radius: 4px; color: var(--danger); background: var(--panel-bg); font-size: 10px; }
 </style>

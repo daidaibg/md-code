@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { clampScroll, scrollFromThumb, scrollGeometry } from './scrollGeometry';
 
-const props = withDefaults(defineProps<{ label: string; fillContent?: boolean }>(), { fillContent: false });
+const props = withDefaults(defineProps<{ label: string; fillContent?: boolean; horizontal?: boolean }>(), { fillContent: false, horizontal: true });
 const emit = defineEmits<{
   scroll: [event: Event];
   'viewport-change': [element: HTMLElement | undefined];
@@ -15,7 +15,7 @@ const hovered = ref(false);
 const scrolling = ref(false);
 const dragging = ref(false);
 const thickness = 14;
-const hasX = computed(() => metrics.value.scrollWidth > metrics.value.width + 1);
+const hasX = computed(() => props.horizontal && metrics.value.scrollWidth > metrics.value.width + 1);
 const hasY = computed(() => metrics.value.scrollHeight > metrics.value.height + 1);
 const axes = computed(() => ({
   x: scrollGeometry(metrics.value.width, metrics.value.scrollWidth, metrics.value.left, metrics.value.width - (hasY.value ? thickness : 0)),
@@ -144,7 +144,7 @@ defineExpose({ viewport, refresh, scrollTo: (options: ScrollToOptions) => viewpo
 
 <template>
   <div class="scroll-area" :class="{ 'is-visible': hovered || scrolling || dragging, 'is-dragging': dragging }" @pointerenter="hovered = true" @pointerleave="hovered = false">
-    <div :id="viewportId" ref="viewport" class="scroll-area__viewport" tabindex="0" role="region" :aria-label="props.label" @scroll.passive="onScroll">
+    <div :id="viewportId" ref="viewport" class="scroll-area__viewport" :class="{ 'is-vertical-only': !horizontal }" tabindex="0" role="region" :aria-label="props.label" @scroll.passive="onScroll">
       <div ref="content" class="scroll-area__content" :class="{ 'is-fill': fillContent }"><slot /></div>
     </div>
     <template v-for="axis in (['x', 'y'] as const)" :key="axis">
@@ -167,6 +167,7 @@ defineExpose({ viewport, refresh, scrollTo: (options: ScrollToOptions) => viewpo
   position: absolute;
   inset: 0;
   overflow: auto;
+  &.is-vertical-only { overflow-x: hidden; }
   overflow-anchor: none;
   scrollbar-width: none;
   // No gutter: the overlay sits above the content instead of exposing a strip of canvas.
