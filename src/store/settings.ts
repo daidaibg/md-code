@@ -25,6 +25,7 @@ interface PersistedSettings {
   imageSaveMode: ImageSaveMode;
   imageSubdirectory: string;
   customImageDirectory: string;
+  notesDirectory: string;
   monaco: MonacoSettings;
 }
 
@@ -109,6 +110,7 @@ export const useSettingsStore = defineStore('settings', () => {
   );
   const imageSubdirectory = ref(saved.imageSubdirectory?.trim() || DEFAULT_IMAGE_DIRECTORY);
   const customImageDirectory = ref(saved.customImageDirectory ?? '');
+  const notesDirectory = ref(saved.notesDirectory ?? '');
   const monaco = reactive<MonacoSettings>(normalizeMonacoSettings(saved.monaco));
 
   const normalizedImageSubdirectory = computed(
@@ -138,6 +140,10 @@ export const useSettingsStore = defineStore('settings', () => {
     customImageDirectory.value = value;
   }
 
+  function setNotesDirectory(value: string): void {
+    notesDirectory.value = value;
+  }
+
   function resetMonacoSettings(): void {
     Object.assign(monaco, DEFAULT_MONACO_SETTINGS);
   }
@@ -149,6 +155,7 @@ export const useSettingsStore = defineStore('settings', () => {
       imageSaveMode,
       imageSubdirectory,
       customImageDirectory,
+      notesDirectory,
       monaco
     ],
     () => {
@@ -159,6 +166,7 @@ export const useSettingsStore = defineStore('settings', () => {
         imageSaveMode: imageSaveMode.value,
         imageSubdirectory: normalizedImageSubdirectory.value,
         customImageDirectory: customImageDirectory.value,
+        notesDirectory: notesDirectory.value.trim(),
         monaco: normalizeMonacoSettings(monaco)
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
@@ -172,6 +180,7 @@ export const useSettingsStore = defineStore('settings', () => {
     imageSaveMode,
     imageSubdirectory,
     customImageDirectory,
+    notesDirectory,
     monaco,
     normalizedImageSubdirectory,
     resolveImageDirectory,
@@ -179,6 +188,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setImageSaveMode,
     setImageSubdirectory,
     setCustomImageDirectory,
+    setNotesDirectory,
     resetMonacoSettings
   };
 });

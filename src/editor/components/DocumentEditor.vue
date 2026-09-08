@@ -54,6 +54,9 @@ const props = defineProps<{
   previewTheme: PreviewThemeName;
   codeTheme: CodeThemeName;
   editorSettings: MonacoSettings;
+  externalViewControls?: boolean;
+  externalTocOpen?: boolean;
+  breakOnNewline?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -62,6 +65,7 @@ const emit = defineEmits<{
   'update:cursor': [cursor: CursorPosition];
   'update:previewTheme': [theme: PreviewThemeName];
   'update:codeTheme': [theme: CodeThemeName];
+  'toggle-toc': [];
 }>();
 
 const monacoEditor = ref<MonacoEditorApi>();
@@ -71,6 +75,9 @@ const editorPane = ref<HTMLElement>();
 const previewScroll = ref<HTMLElement>();
 const tocItems = ref<TocItem[]>([]);
 const tocOpen = ref(true);
+const effectiveTocOpen = computed(() =>
+  props.externalViewControls ? props.externalTocOpen ?? true : tocOpen.value
+);
 const activeTocId = ref<string | null>(null);
 const editorPaneWidth = ref<number | null>(null);
 const tocPaneWidth = ref(230);
@@ -87,7 +94,7 @@ const showEditor = computed(() => effectiveMode.value !== 'preview');
 const showPreview = computed(() => effectiveMode.value !== 'editor' && previewSupported.value);
 const showToolbar = computed(() => props.document.language === 'markdown');
 const showToc = computed(
-  () => showPreview.value && previewKind.value === 'markdown' && tocOpen.value
+  () => showPreview.value && previewKind.value === 'markdown' && effectiveTocOpen.value
 );
 const stageStyle = computed(() => {
   const columns: string[] = [];
@@ -145,6 +152,11 @@ async function runCommand(command: EditorCommand): Promise<void> {
 
 function insertUploadedImage(markdown: string): void {
   monacoEditor.value?.insertText(markdown);
+}
+
+function toggleToc(): void {
+  if (props.externalViewControls) emit('toggle-toc');
+  else tocOpen.value = !tocOpen.value;
 }
 
 const scrollSync = useContentScrollSync({
@@ -314,14 +326,15 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
     <Toolbar
       v-if="showToolbar"
       :mode="effectiveMode"
-      :toc-open="tocOpen"
+      :toc-open="effectiveTocOpen"
       :preview-theme="previewTheme"
       :code-theme="codeTheme"
+      :show-view-tools="!externalViewControls"
       @command="runCommand"
       @update:mode="updateMode"
       @update:preview-theme="emit('update:previewTheme', $event)"
       @update:code-theme="emit('update:codeTheme', $event)"
-      @toggle-toc="tocOpen = !tocOpen"
+      @toggle-toc="toggleToc"
     />
 
     <div
@@ -363,6 +376,7 @@ defineExpose({ focus, focusSelection, showFind, undo, redo, selectAll, formatDoc
         <MarkdownPreview
           v-if="previewKind === 'markdown'"
           :source="document.content"
+          :break-on-newline="breakOnNewline"
           :document-path="document.path"
           :theme="theme"
           :preview-theme="previewTheme"

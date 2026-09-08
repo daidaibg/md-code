@@ -330,15 +330,18 @@ export function useDocumentManager() {
       closeDocument(id);
     }
 
-    const completion = pendingCloseAll.value ? closeAllCompletion : null;
+    const completion = closeAllCompletion;
     resetPendingCloseState();
     if (completion) await completion();
   }
 
-  function requestCloseDocuments(ids: string[]): void {
+  function requestCloseDocuments(
+    ids: string[],
+    completion: (() => void | Promise<void>) | null = null
+  ): void {
     const existingIds = new Set(store.documents.map((document) => document.id));
     pendingCloseAll.value = false;
-    closeAllCompletion = null;
+    closeAllCompletion = completion;
     pendingCloseId.value = null;
     pendingCloseIds.value = [...new Set(ids)].filter((id) => existingIds.has(id));
     void continuePendingClose();
@@ -454,6 +457,7 @@ export function useDocumentManager() {
     cancelRename,
     renameDocument,
     requestClose,
+    requestCloseDocuments,
     requestCloseOthers,
     requestCloseLeft,
     requestCloseRight,

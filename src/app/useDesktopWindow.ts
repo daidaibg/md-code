@@ -4,6 +4,9 @@ import { listen } from '@tauri-apps/api/event';
 import { isSupportedTextPath, isTauriRuntime } from '@/filesystem/fileSystemService';
 
 const OPEN_FILES_EVENT = 'md-code://open-files';
+const OPEN_NOTES_EVENT = 'md-code://open-notes';
+const OPEN_SETTINGS_EVENT = 'md-code://open-settings';
+const REQUEST_EXIT_EVENT = 'md-code://request-exit';
 const WINDOW_STATE_STORAGE_KEY = 'md-code:window-state-v2';
 const LEGACY_WINDOW_SIZE_STORAGE_KEY = 'md-code:window-size-v1';
 const MIN_WINDOW_WIDTH = 900;
@@ -24,12 +27,17 @@ interface DesktopWindowOptions {
   isCloseConfirmationPending: () => boolean;
   requestCloseAll: (completion: () => void | Promise<void>) => boolean;
   openPath: (path: string) => Promise<void>;
+  openNotes: () => void;
+  openSettings: () => void;
 }
 
 export function useDesktopWindow(options: DesktopWindowOptions): void {
   let unlistenClose: (() => void) | undefined;
   let unlistenDrop: (() => void) | undefined;
   let unlistenOpenFiles: (() => void) | undefined;
+  let unlistenOpenNotes: (() => void) | undefined;
+  let unlistenOpenSettings: (() => void) | undefined;
+  let unlistenRequestExit: (() => void) | undefined;
   let unlistenResize: (() => void) | undefined;
   let unlistenMove: (() => void) | undefined;
   let stopPersistSettingWatch: (() => void) | undefined;
@@ -114,6 +122,24 @@ export function useDesktopWindow(options: DesktopWindowOptions): void {
 
   onMounted(() => {
     if (!isTauriRuntime()) return;
+
+    // Page navigation must not depend on window placement/resize setup succeeding.
+    void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      if (disposed) return;
+      const appWindow = getCurrentWindow();
+      void appWindow.listen(OPEN_NOTES_EVENT, () => {
+        if (!disposed) options.openNotes();
+      }).then(unlisten => {
+        if (disposed) unlisten();
+        else unlistenOpenNotes = unlisten;
+      }).catch(error => console.error('注册托盘便签事件失败', error));
+      void appWindow.listen(OPEN_SETTINGS_EVENT, () => {
+        if (!disposed) options.openSettings();
+      }).then(unlisten => {
+        if (disposed) unlisten();
+        else unlistenOpenSettings = unlisten;
+      }).catch(error => console.error('注册托盘设置事件失败', error));
+    });
 
     void (async () => {
       const [
@@ -244,28 +270,24 @@ export function useDesktopWindow(options: DesktopWindowOptions): void {
       unlistenOpenFiles = await listen<string[]>(OPEN_FILES_EVENT, (event) => {
         enqueuePaths(event.payload);
       });
+      const exitApplication = async (): Promise<void> => {
+        allowClose = true;
+        try {
+          await invoke('exit_application');
+        } catch {
+          allowClose = false;
+        }
+      };
+      const requestExit = (): void => {
+        if (options.isCloseConfirmationPending()) return;
+        if (!options.hasModifiedDocuments()) void exitApplication();
+        else options.requestCloseAll(exitApplication);
+      };
+      unlistenRequestExit = await listen(REQUEST_EXIT_EVENT, requestExit);
       unlistenClose = await appWindow.onCloseRequested(async (event) => {
         if (allowClose) return;
         event.preventDefault();
-        if (options.isCloseConfirmationPending()) {
-          return;
-        }
-
-        const exitApplication = async (): Promise<void> => {
-          allowClose = true;
-          try {
-            await invoke('exit_application');
-          } catch {
-            allowClose = false;
-          }
-        };
-
-        if (!options.hasModifiedDocuments()) {
-          await exitApplication();
-          return;
-        }
-
-        options.requestCloseAll(exitApplication);
+        await appWindow.hide();
       });
 
       unlistenDrop = await appWindow.onDragDropEvent((event) => {
@@ -282,6 +304,9 @@ export function useDesktopWindow(options: DesktopWindowOptions): void {
     unlistenClose?.();
     unlistenDrop?.();
     unlistenOpenFiles?.();
+    unlistenOpenNotes?.();
+    unlistenOpenSettings?.();
+    unlistenRequestExit?.();
     unlistenResize?.();
     unlistenMove?.();
     stopPersistSettingWatch?.();

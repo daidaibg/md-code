@@ -99,3 +99,17 @@ pub fn reveal_in_file_manager(path: String) -> Result<(), String> {
     #[allow(unreachable_code)]
     Err("当前平台不支持打开文件管理器".to_string())
 }
+
+#[tauri::command]
+pub fn open_directory(path: String) -> Result<(), String> {
+    let target = Path::new(&path);
+    if !target.is_dir() { return Err("目录不存在，无法打开".to_string()); }
+    #[cfg(target_os = "windows")]
+    { return Command::new("explorer.exe").arg(target).spawn().map(|_| ()).map_err(|error| format!("打开目录失败：{error}")); }
+    #[cfg(target_os = "macos")]
+    { return Command::new("open").arg(target).spawn().map(|_| ()).map_err(|error| format!("打开目录失败：{error}")); }
+    #[cfg(target_os = "linux")]
+    { return Command::new("xdg-open").arg(target).spawn().map(|_| ()).map_err(|error| format!("打开目录失败：{error}")); }
+    #[allow(unreachable_code)]
+    Err("当前平台不支持打开目录".to_string())
+}

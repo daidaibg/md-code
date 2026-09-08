@@ -141,6 +141,11 @@ export async function revealInFileManager(path: string): Promise<void> {
   await invoke('reveal_in_file_manager', { path });
 }
 
+export async function openDirectoryInFileManager(path: string): Promise<void> {
+  if (!isTauriRuntime()) throw new Error('浏览器预览模式无法打开文件资源管理器');
+  await invoke('open_directory', { path });
+}
+
 export async function copyTextToClipboard(text: string): Promise<void> {
   try {
     if (navigator.clipboard?.writeText) {

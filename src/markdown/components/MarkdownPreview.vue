@@ -21,11 +21,15 @@ const props = defineProps<{
   theme: ResolvedTheme;
   previewTheme: PreviewThemeName;
   codeTheme: CodeThemeName;
+  breakOnNewline?: boolean;
 }>();
 
 const emit = defineEmits<{ 'toc-change': [items: TocItem[]] }>();
 const preview = ref<HTMLElement>();
-const markdown = createMarkdownEngine();
+// Each preview owns its parser; note line breaks must not change ordinary documents.
+const markdown = computed(() =>
+  createMarkdownEngine().set({ breaks: props.breakOnNewline ?? false })
+);
 let renderVersion = 0;
 let mermaidPromise: Promise<MermaidApi> | undefined;
 const mermaidSources = new WeakMap<HTMLElement, string>();
@@ -34,9 +38,9 @@ let copyResetTimer: number | undefined;
 
 const safePreviewUri = /^(?:(?:(?:f|ht)tps?|tel|callto|sms|file|asset|tauri):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/iu;
 const renderedHtml = computed(() =>
-  DOMPurify.sanitize(markdown.render(props.source), { ALLOWED_URI_REGEXP: safePreviewUri })
+  DOMPurify.sanitize(markdown.value.render(props.source), { ALLOWED_URI_REGEXP: safePreviewUri })
 );
-const tocItems = computed(() => extractHeadings(markdown, props.source));
+const tocItems = computed(() => extractHeadings(markdown.value, props.source));
 const activeCodeCss = computed(() => resolveCodeThemeCss(props.codeTheme, props.theme));
 
 function loadMermaid(): Promise<MermaidApi> {

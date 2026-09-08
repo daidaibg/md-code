@@ -41,16 +41,18 @@ const emit = defineEmits<{
   'cycle-tab': [direction: 1 | -1];
   'set-theme': [theme: EditorTheme];
   'open-settings': [];
+  'toggle-notes': [];
   'install-update': [];
   'check-update': [];
 }>();
 
-type MenuId = 'file' | 'edit' | 'search' | 'view' | 'settings' | 'help';
+type MenuId = 'file' | 'edit' | 'search' | 'view' | 'notes' | 'settings' | 'help';
 const topMenus: Array<{ id: MenuId; label: string }> = [
   { id: 'file', label: '文件(F)' },
   { id: 'edit', label: '编辑(E)' },
   { id: 'search', label: '搜索(S)' },
   { id: 'view', label: '查看(V)' },
+  { id: 'notes', label: '便签(N)' },
   { id: 'settings', label: '设置(P)' },
   { id: 'help', label: '帮助(H)' }
 ];
@@ -167,8 +169,8 @@ onBeforeUnmount(() => {
       :class="{ active: activeMenu === menu.id }"
       role="menuitem"
       :aria-expanded="activeMenu === menu.id"
-      @mouseenter="switchMenu(menu.id, $event)"
-      @click.stop="toggleMenu(menu.id, $event)"
+      @mouseenter="menu.id === 'notes' ? closeMenu() : switchMenu(menu.id, $event)"
+      @click.stop="menu.id === 'notes' ? run(() => emit('toggle-notes')) : toggleMenu(menu.id, $event)"
     >
       {{ menu.label }}
     </button>
@@ -251,8 +253,8 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="window-control window-close"
-        title="关闭"
-        aria-label="关闭窗口"
+        title="隐藏到系统托盘"
+        aria-label="隐藏窗口到系统托盘"
         @click.stop="closeWindow"
       >
         <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2 2 8 8M10 2l-8 8" /></svg>

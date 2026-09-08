@@ -5,13 +5,15 @@ import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
 import {
   chooseDirectory,
+  openDirectoryInFileManager,
   scheduleWebviewCacheCleanup
 } from '@/filesystem/fileSystemService';
+import { resolveNotesDirectory } from '@/notes/noteService';
 import { useEditorStore } from '@/store/editor';
 import { useSettingsStore } from '@/store/settings';
 import { listCodeThemes, listPreviewThemes } from '@/themes/themeRegistry';
 
-type SettingsSection = 'appearance' | 'editor' | 'files' | 'markdown';
+type SettingsSection = 'appearance' | 'editor' | 'files' | 'notes' | 'markdown';
 
 interface NavigationItem {
   id: SettingsSection;
@@ -31,6 +33,7 @@ const {
   imageSaveMode,
   imageSubdirectory,
   customImageDirectory,
+  notesDirectory,
   monaco
 } = storeToRefs(settingsStore);
 const previewThemes = listPreviewThemes();
@@ -38,10 +41,15 @@ const codeThemes = listCodeThemes();
 const cacheCleanupBusy = ref(false);
 const cacheCleanupMessage = ref('');
 const cacheCleanupFailed = ref(false);
+const resolvedNotesDirectory = ref('正在读取…');
+const notesDirectoryInput = ref('');
+let notesDirectoryRequest = 0;
+const notesDirectoryError = ref('');
 const navigationItems: NavigationItem[] = [
   { id: 'appearance', label: '外观', description: '主题与阅读样式' },
   { id: 'editor', label: '编辑器', description: 'Monaco 编辑体验' },
   { id: 'files', label: '文件', description: '新建与保存位置' },
+  { id: 'notes', label: '便签', description: 'Markdown 便签目录' },
   { id: 'markdown', label: 'Markdown', description: '图片资源设置' }
 ];
 const validSections = new Set<SettingsSection>(navigationItems.map((item) => item.id));
@@ -63,8 +71,10 @@ const resolvedImageDirectory = computed(() => {
 });
 
 watch(
-  () => route.params.section,
-  (section) => {
+  () => [route.name, route.params.section] as const,
+  ([name, section]) => {
+    // This page remains mounted when another workspace tab is active.
+    if (name !== 'settings') return;
     if (typeof section === 'string' && validSections.has(section as SettingsSection)) return;
     void router.replace({ name: 'settings', params: { section: 'appearance' } });
   },
@@ -85,6 +95,50 @@ async function selectNewFileDirectory(): Promise<void> {
   const selected = await chooseDirectory(newFileDirectory.value || undefined);
   if (selected) settingsStore.setNewFileDirectory(selected);
 }
+
+async function refreshNotesDirectory(): Promise<void> {
+  const request = ++notesDirectoryRequest;
+  notesDirectoryError.value = '';
+  try {
+    const directory = await resolveNotesDirectory(notesDirectory.value);
+    if (request !== notesDirectoryRequest) return;
+    resolvedNotesDirectory.value = directory;
+    notesDirectoryInput.value = directory;
+  } catch (error) {
+    if (request !== notesDirectoryRequest) return;
+    notesDirectoryError.value = error instanceof Error ? error.message : String(error);
+    resolvedNotesDirectory.value = notesDirectory.value || '无法读取默认便签目录';
+    notesDirectoryInput.value = notesDirectory.value;
+  }
+}
+
+function applyNotesDirectory(): void {
+  const directory = notesDirectoryInput.value.trim();
+  if (directory === resolvedNotesDirectory.value) return;
+  if (directory === notesDirectory.value) void refreshNotesDirectory();
+  else settingsStore.setNotesDirectory(directory);
+}
+
+function resetNotesDirectory(): void {
+  if (notesDirectory.value) settingsStore.setNotesDirectory('');
+  else void refreshNotesDirectory();
+}
+
+async function selectNotesDirectory(): Promise<void> {
+  const selected = await chooseDirectory(notesDirectory.value || resolvedNotesDirectory.value);
+  if (selected) settingsStore.setNotesDirectory(selected);
+}
+
+async function openNotesDirectory(): Promise<void> {
+  try {
+    const directory = await resolveNotesDirectory(notesDirectory.value);
+    await openDirectoryInFileManager(directory);
+  } catch (error) {
+    notesDirectoryError.value = error instanceof Error ? error.message : String(error);
+  }
+}
+
+watch(notesDirectory, () => void refreshNotesDirectory(), { immediate: true });
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -397,6 +451,37 @@ async function clearWebviewCache(): Promise<void> {
             </div>
           </section>
         </template>
+
+        <section v-else-if="activeSection === 'notes'" class="settings-card">
+          <div class="section-heading">
+            <h2>Markdown 便签</h2>
+            <p>每条便签保存为独立的 .md 文件，默认位于应用数据目录下。</p>
+          </div>
+
+          <label class="setting-row">
+            <span class="setting-copy">
+              <strong>便签目录</strong>
+              <small>留空时使用安装目录 data/notes；开发版使用 src-tauri/.dev-data/notes。</small>
+            </span>
+            <div class="path-picker setting-path-picker">
+              <input
+                type="text"
+                v-model="notesDirectoryInput"
+                :title="notesDirectoryInput"
+                placeholder="使用应用默认便签目录"
+                @change="applyNotesDirectory"
+              />
+              <button type="button" @click.prevent="selectNotesDirectory">浏览...</button>
+            </div>
+          </label>
+
+          <div class="notes-directory-actions">
+            <button type="button" class="secondary-button" @click="resetNotesDirectory">恢复默认目录</button>
+            <button type="button" class="secondary-button" @click="openNotesDirectory">打开便签目录</button>
+          </div>
+          <p class="directory-hint">切换目录不会移动原目录中的便签；切回对应目录即可继续查看。</p>
+          <p v-if="notesDirectoryError" class="cache-cleanup-status failed">{{ notesDirectoryError }}</p>
+        </section>
 
         <section v-else class="settings-card">
           <div class="section-heading">
@@ -715,6 +800,19 @@ input[type='number'] {
     font-family: var(--font-mono);
     overflow-wrap: anywhere;
   }
+}
+
+.notes-directory-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 14px;
+}
+
+.directory-hint {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 .cache-cleanup-note {

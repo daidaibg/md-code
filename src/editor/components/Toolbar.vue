@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import ToolbarIcon from '@/components/icons/ToolbarIcon.vue';
-import CodeThemeDropdown from '@/themes/components/CodeThemeDropdown.vue';
-import PreviewThemeDropdown from '@/themes/components/PreviewThemeDropdown.vue';
+import EditorViewControls from '@/editor/components/EditorViewControls.vue';
 import AdmonitionDropdown from './toolbar/AdmonitionDropdown.vue';
 import EmojiDropdown from './toolbar/EmojiDropdown.vue';
 import FormulaDropdown from './toolbar/FormulaDropdown.vue';
@@ -27,12 +26,13 @@ interface SimpleTool {
   divider?: boolean;
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   mode: EditorMode;
   tocOpen: boolean;
   previewTheme: PreviewThemeName;
   codeTheme: CodeThemeName;
-}>();
+  showViewTools?: boolean;
+}>(), { showViewTools: true });
 
 const emit = defineEmits<{
   command: [command: EditorCommand];
@@ -58,12 +58,6 @@ const formatTools: SimpleTool[] = [
   { command: 'inline-code', icon: 'inline-code', title: '行内代码' },
   { command: 'code-block', icon: 'code-block', title: '代码块' },
   { command: 'link', icon: 'link', title: '链接' }
-];
-
-const viewModes: { mode: EditorMode; icon: ToolbarIconName; label: string }[] = [
-  { mode: 'preview', icon: 'preview', label: '仅预览' },
-  { mode: 'split', icon: 'split', label: '编辑与预览' },
-  { mode: 'editor', icon: 'editor', label: '仅编辑' }
 ];
 
 function selectMode(mode: EditorMode): void {
@@ -140,44 +134,18 @@ function admonition(kind: AdmonitionKind): void {
 
     <div v-else class="preview-message">阅读模式</div>
 
-    <div class="view-tools">
-      <PreviewThemeDropdown
-        :model-value="previewTheme"
-        @update:model-value="emit('update:previewTheme', $event)"
-      />
-      <CodeThemeDropdown
-        :model-value="codeTheme"
-        @update:model-value="emit('update:codeTheme', $event)"
-      />
-      <span class="divider" aria-hidden="true" />
-      <button
-        type="button"
-        class="tool-button"
-        :class="{ active: mode !== 'editor' && tocOpen }"
-        :disabled="mode === 'editor'"
-        :title="mode === 'editor' ? '切换到预览后可显示目录' : '显示或隐藏目录'"
-        aria-label="显示或隐藏目录"
-        :aria-pressed="mode !== 'editor' && tocOpen"
-        @click="emit('toggle-toc')"
-      >
-        <ToolbarIcon name="toc" />
-      </button>
-      <div class="view-mode-group" role="group" aria-label="文档视图模式">
-        <button
-          v-for="view in viewModes"
-          :key="view.mode"
-          type="button"
-          class="tool-button"
-          :class="{ active: mode === view.mode }"
-          :title="view.label"
-          :aria-label="`切换到${view.label}`"
-          :aria-pressed="mode === view.mode"
-          @click="selectMode(view.mode)"
-        >
-          <ToolbarIcon :name="view.icon" />
-        </button>
-      </div>
-    </div>
+    <EditorViewControls
+      v-if="showViewTools"
+      class="view-tools"
+      :mode="mode"
+      :toc-open="tocOpen"
+      :preview-theme="previewTheme"
+      :code-theme="codeTheme"
+      @update:mode="selectMode"
+      @update:preview-theme="emit('update:previewTheme', $event)"
+      @update:code-theme="emit('update:codeTheme', $event)"
+      @toggle-toc="emit('toggle-toc')"
+    />
   </div>
 </template>
 
@@ -248,15 +216,6 @@ function admonition(kind: AdmonitionKind): void {
 
   &:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   &:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; box-shadow: none; }
-}
-
-.view-mode-group {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 2px;
-  padding: 1px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
 }
 
 .divider {

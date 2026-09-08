@@ -1,1 +1,2 @@
-﻿pub mod filesystem;
+pub mod filesystem;
+pub mod notes;

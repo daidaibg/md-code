@@ -1,8 +1,8 @@
-import { createRouter, createWebHashHistory } from 'vue-router';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import AppShell from '@/app/AppShell.vue';
 
 export const router = createRouter({
-  history: createWebHashHistory(),
+  history: createMemoryHistory(),
   routes: [
     {
       path: '/',
@@ -12,6 +12,11 @@ export const router = createRouter({
     {
       path: '/settings/:section?',
       name: 'settings',
+      component: AppShell
+    },
+    {
+      path: '/notes',
+      name: 'notes',
       component: AppShell
     },
     {
