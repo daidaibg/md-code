@@ -55,6 +55,7 @@ const sidebarResizeManager = new PaneResizeManager({
 });
 const noteModes = ref<Record<string, EditorMode>>({});
 const visualMode = ref(true);
+const visualPreview = ref(false);
 const visualUnavailable = ref('');
 const resolvedDirectory = ref('');
 const visualEditor = ref<{ focus: () => void; undo: () => void; redo: () => void; selectAll: () => void }>();
@@ -102,11 +103,13 @@ const editorDocument = computed<EditorDocument | null>(() => {
     language: 'markdown',
     content: note.content,
     modified: false,
-    mode: noteModes.value[note.id] ?? 'editor',
+    mode: visualMode.value && visualPreview.value ? 'preview' : noteModes.value[note.id] ?? 'editor',
     cursor: noteCursors.value[note.id] ?? { lineNumber: 1, column: 1 }
   };
 });
-const currentMode = computed<EditorMode>(() => visualMode.value ? 'editor' : editorDocument.value?.mode ?? 'editor');
+const currentMode = computed<EditorMode>(() => visualMode.value
+  ? visualPreview.value ? 'preview' : 'editor'
+  : editorDocument.value?.mode ?? 'editor');
 const currentTocOpen = computed(() => activeNote.value
   ? noteTocStates.value[activeNote.value.id] ?? true
   : true
@@ -167,12 +170,22 @@ async function createNote(): Promise<void> {
 
 function updateMode(mode: EditorMode): void {
   visualMode.value = false;
+  visualPreview.value = false;
   if (activeNote.value) noteModes.value[activeNote.value.id] = mode;
+}
+
+function updateViewMode(mode: EditorMode): void {
+  if (visualMode.value && mode !== 'split') {
+    visualPreview.value = mode === 'preview';
+    return;
+  }
+  updateMode(mode);
 }
 
 function useVisualEditor(): void {
   visualUnavailable.value = '';
   visualMode.value = true;
+  visualPreview.value = false;
 }
 
 function onVisualUnavailable(reason: string): void {
@@ -283,15 +296,15 @@ defineExpose({
   flushPendingSave,
   currentMode,
   setMode: updateMode,
-  focus: async () => { if (visualMode.value) visualEditor.value?.focus(); else await noteEditor.value?.focus(); },
+  focus: async () => { if (visualMode.value && !visualPreview.value) visualEditor.value?.focus(); else await noteEditor.value?.focus(); },
   showFind,
-  undo: async () => { if (visualMode.value) visualEditor.value?.undo(); else await noteEditor.value?.undo(); },
-  redo: async () => { if (visualMode.value) visualEditor.value?.redo(); else await noteEditor.value?.redo(); },
-  selectAll: async () => { if (visualMode.value) visualEditor.value?.selectAll(); else await noteEditor.value?.selectAll(); },
+  undo: async () => { if (visualMode.value && !visualPreview.value) visualEditor.value?.undo(); else await noteEditor.value?.undo(); },
+  redo: async () => { if (visualMode.value && !visualPreview.value) visualEditor.value?.redo(); else await noteEditor.value?.redo(); },
+  selectAll: async () => { if (visualMode.value && !visualPreview.value) visualEditor.value?.selectAll(); else await noteEditor.value?.selectAll(); },
   formatDocument: async () => { updateMode('editor'); await nextTick(); await noteEditor.value?.formatDocument(); }
 });
 
-watch(activeId, () => { visualMode.value = true; visualUnavailable.value = ''; });
+watch(activeId, () => { visualMode.value = true; visualPreview.value = false; visualUnavailable.value = ''; });
 watch(() => props.directory, async directory => {
   const request = ++directoryRequest;
   resolvedDirectory.value = '';
@@ -359,7 +372,7 @@ onBeforeUnmount(() => {
         :toc-open="currentTocOpen"
         :preview-theme="previewTheme"
         :code-theme="codeTheme"
-        @update:mode="updateMode"
+        @update:mode="updateViewMode"
         @update:preview-theme="emit('update:preview-theme', $event)"
         @update:code-theme="emit('update:code-theme', $event)"
         @toggle-toc="toggleCurrentToc"
@@ -435,9 +448,9 @@ onBeforeUnmount(() => {
       <section class="note-editor">
         <p v-if="visualUnavailable" class="visual-unavailable" role="status">{{ visualUnavailable }}</p>
         <template v-if="activeNote && editorDocument">
-          <div v-if="visualMode && isTauriRuntime() && !resolvedDirectory" class="note-placeholder">正在读取便签目录，可切换源码继续编辑…</div>
+          <div v-if="visualMode && !visualPreview && isTauriRuntime() && !resolvedDirectory" class="note-placeholder">正在读取便签目录，可切换源码继续编辑…</div>
           <NoteVisualEditor
-            v-else-if="visualMode"
+            v-else-if="visualMode && !visualPreview"
             :key="`visual:${activeNote.id}`"
             ref="visualEditor"
             :source="activeNote.content"

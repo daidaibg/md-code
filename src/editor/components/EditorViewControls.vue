@@ -41,7 +41,16 @@ const viewModes: { mode: EditorMode; icon: ToolbarIconName; label: string }[] = 
       aria-label="显示或隐藏目录"
       @click="emit('toggle-toc')"
     ><ToolbarIcon name="toc" /></button>
-    <div v-if="!visual" class="view-mode-group" role="group" aria-label="文档视图模式">
+    <button
+      v-if="visual"
+      type="button"
+      class="tool-button visual-preview-button"
+      :class="{ active: mode === 'preview' }"
+      :title="mode === 'preview' ? '返回可视化编辑' : '预览 Markdown'"
+      :aria-pressed="mode === 'preview'"
+      @click="emit('update:mode', mode === 'preview' ? 'editor' : 'preview')"
+    ><ToolbarIcon name="preview" /><span>预览</span></button>
+    <div v-else class="view-mode-group" role="group" aria-label="文档视图模式">
       <button
         v-for="view in viewModes"
         :key="view.mode"
@@ -62,6 +71,7 @@ const viewModes: { mode: EditorMode; icon: ToolbarIconName; label: string }[] = 
 .tool-button:hover, .tool-button:focus-visible, .tool-button.active { color: var(--text-primary); background: var(--control-hover); outline: none; }
 .tool-button.active { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
 .tool-button:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; box-shadow: none; }
+.visual-preview-button { display: flex; width: auto; flex-basis: auto; gap: 4px; padding: 0 7px; font-size: 12px; }
 .view-mode-group { display: flex; flex: 0 0 auto; gap: 2px; padding: 1px; border: 1px solid var(--border-subtle); border-radius: 6px; }
 .divider { width: 1px; height: 20px; margin: 0 3px; flex: 0 0 auto; background: var(--border-color); }
 </style>

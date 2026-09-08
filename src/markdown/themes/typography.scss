@@ -67,7 +67,9 @@
       word-spacing: normal;
     }
 
-    > :first-child { margin-block-start: 0; }
+    // Editable documents identify their first model block with a decoration;
+    // selection widgets must not toggle this DOM-dependent margin reset.
+    &:not(.ProseMirror) > :first-child { margin-block-start: 0; }
     > :last-child { margin-block-end: 0; }
   }
 

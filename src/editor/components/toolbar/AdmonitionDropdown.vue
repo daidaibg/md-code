@@ -5,11 +5,11 @@ import type { AdmonitionKind } from '@/types/editor';
 
 const emit = defineEmits<{ select: [kind: AdmonitionKind] }>();
 const kinds: Array<{ kind: AdmonitionKind; label: string }> = [
-  { kind: 'note', label: 'Note' },
-  { kind: 'info', label: 'Info' },
-  { kind: 'tip', label: 'Tip' },
-  { kind: 'warning', label: 'Warning' },
-  { kind: 'danger', label: 'Danger' }
+  { kind: 'note', label: '提示' },
+  { kind: 'info', label: '信息' },
+  { kind: 'tip', label: '技巧' },
+  { kind: 'warning', label: '警告' },
+  { kind: 'danger', label: '危险' }
 ];
 </script>
 
@@ -26,6 +26,7 @@ const kinds: Array<{ kind: AdmonitionKind; label: string }> = [
     >
       <span class="kind-dot" :class="`kind-${item.kind}`" aria-hidden="true" />
       {{ item.label }}
+      <code>{{ item.kind }}</code>
     </button>
   </ToolbarDropdown>
 </template>
@@ -42,6 +43,7 @@ const kinds: Array<{ kind: AdmonitionKind; label: string }> = [
   color: inherit;
   background: transparent;
   text-align: left;
+  font-size: 11px;
   white-space: nowrap;
   cursor: pointer;
 
@@ -58,6 +60,7 @@ const kinds: Array<{ kind: AdmonitionKind; label: string }> = [
   border-radius: 50%;
   background: #64748b;
 }
+.menu-button code { margin-left: auto; padding-left: 8px; font-size: 11px; opacity: .8; }
 
 .kind-info { background: #0284c7; }
 .kind-tip { background: #059669; }

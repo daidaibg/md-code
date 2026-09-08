@@ -100,9 +100,9 @@ export function applyTextCommand(
   }
   if (command.type === 'admonition') {
     const content = selectedText(value, selection) || '内容';
-    const opening = `!!! ${command.kind} "标题"`;
-    const template = `${opening}\n\n${content}\n\n!!!`;
-    return replace(value, selection, template, opening.length + 2, content.length);
+    const opening = `!!! ${command.kind}`;
+    const template = `${opening}\n${content}\n!!!`;
+    return replace(value, selection, template, opening.length + 1, content.length);
   }
   if (command.type === 'emoji') return replace(value, selection, command.value);
   if (command.type === 'image') {

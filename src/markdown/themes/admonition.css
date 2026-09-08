@@ -13,11 +13,12 @@
 .md-editor-preview .md-admonition-title {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 10px 14px 9px;
+  gap: 8px;
+  padding: 8px 12px;
   color: var(--md-admonition-color);
   font-weight: 650;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .md-editor-preview .md-admonition-marker {
@@ -30,7 +31,8 @@
 }
 
 .md-editor-preview .md-admonition-content {
-  padding: 0 14px 12px;
+  padding: 4px 12px 12px;
+  min-height: 38px;
 }
 
 .md-editor-preview .md-admonition-content > :first-child {
@@ -39,6 +41,13 @@
 
 .md-editor-preview .md-admonition-content > :last-child {
   margin-bottom: 0;
+}
+
+/* Outrank theme-qualified prose margins inside the hint body. Its container
+   already provides padding, so paragraphs must not add another bottom gap. */
+.md-editor.markdown-preview-host .md-editor-preview.md-editor-preview .md-admonition-content > p {
+  margin: 0;
+  margin-block: 0;
 }
 
 .md-editor-preview .md-admonition-note {

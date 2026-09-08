@@ -4,11 +4,12 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { Crepe } from '@milkdown/crepe';
 import { editorViewCtx, editorViewOptionsCtx, serializerCtx } from '@milkdown/kit/core';
 import { $prose, $remark, $view, callCommand, insert, replaceAll } from '@milkdown/kit/utils';
-import { Plugin } from '@milkdown/kit/prose/state';
+import { Plugin, TextSelection } from '@milkdown/kit/prose/state';
+import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { codeBlockConfig } from '@milkdown/kit/component/code-block';
 import { EditorView as CodeMirrorView } from '@codemirror/view';
 import { undo as undoHistory, redo as redoHistory } from '@milkdown/kit/prose/history';
-import { exitCode, selectAll as selectAllCommand } from '@milkdown/kit/prose/commands';
+import { exitCode, splitBlock, selectAll as selectAllCommand } from '@milkdown/kit/prose/commands';
 import {
   codeBlockSchema, hardbreakSchema, toggleStrongCommand, toggleEmphasisCommand, toggleInlineCodeCommand,
   wrapInHeadingCommand, wrapInBlockquoteCommand, wrapInBulletListCommand,
@@ -24,6 +25,10 @@ import { saveMarkdownImage } from '@/editor/images/saveMarkdownImage';
 import { isTauriRuntime } from '@/filesystem/fileSystemService';
 import { applyTextCommand } from '@/editor/utils/textCommands';
 import { createNoteBlockDrag } from '@/notes/blockDrag';
+import { visualAdmonition, visualAdmonitionView, remarkVisualAdmonition } from '@/notes/visualAdmonition';
+import { remarkVisualBlankLines } from '@/notes/visualBlankLines';
+import { openingMarker } from '@/markdown/plugins/admonition';
+import '@/markdown/themes/admonition.css';
 import { scopeVisualCodeCss, createVisualCodeTheme } from '@/notes/visualCodeTheme';
 import { resolveCodeThemeCss } from '@/themes/codeThemeCss';
 import { previewThemeClass } from '@/themes/themeRegistry';
@@ -131,7 +136,11 @@ const codeSuggestions: InputSuggestion[] = [
   { label: 'YAML', value: 'yaml' }, { label: 'Java', value: 'java' },
   { label: 'C++', value: 'cpp' }, { label: 'C#', value: 'csharp' }
 ];
-const hintSuggestions = ['tip', 'note', 'info', 'warning', 'danger'].map(value => ({ label: `${value} 提示块标记`, value }));
+const hintSuggestions = [
+  { label: '提示', value: 'note' }, { label: '信息', value: 'info' },
+  { label: '技巧', value: 'tip' }, { label: '警告', value: 'warning' },
+  { label: '危险', value: 'danger' }
+];
 
 const languageRoot = ref<HTMLElement>();
 const languageSearch = ref<HTMLInputElement>();
@@ -217,11 +226,12 @@ function updateSuggestions(): void {
       return;
     }
     const text = $from.parent.textContent;
-    const match = /^(?<marker>`{3}|~{3}|!{3}|！{3})\s*(?<query>[\w+#.-]*)$/u.exec(text);
+    const match = /^(?<marker>`{3}|~{3})\s*(?<query>[\p{Letter}\w+#.-]*)$/u.exec(text)
+      ?? /^(?<marker>!{2,3}|！{2,3}|:{3})(?:[ \t](?<query>[\p{Letter}\w+#.-]*))?$/u.exec(text);
     if (!match) { suggestion.value = undefined; dismissedSuggestion = ''; return; }
     const from = $from.start();
     if (dismissedSuggestion === `${from}:${text}`) return;
-    const kind = match.groups?.marker?.includes('!') || match.groups?.marker?.includes('！') ? 'hint' : 'code';
+    const kind = /^[!！:]/u.test(match.groups?.marker ?? '') ? 'hint' : 'code';
     const query = (match.groups?.query ?? '').toLowerCase();
     // Mermaid remains an explicit source-mode operation, not a silently converted block.
     if (kind === 'code' && query === 'mermaid') { suggestion.value = undefined; return; }
@@ -230,7 +240,7 @@ function updateSuggestions(): void {
     if (!items.length && kind === 'code') items = [{ label: `使用语言：${query}`, value: query }];
     if (!items.length) { suggestion.value = undefined; return; }
     const caret = view.coordsAtPos(selection.from);
-    const width = Math.min(300, window.innerWidth - 16);
+    const width = Math.min(kind === 'hint' ? 180 : 300, window.innerWidth - 16);
     const height = Math.max(33, Math.min(items.length * 33, 220, window.innerHeight - 24));
     if (suggestion.value?.text !== text || suggestion.value.from !== from) suggestionIndex.value = 0;
     suggestion.value = { kind, text, from, to: $from.end(), items, height,
@@ -252,7 +262,10 @@ function acceptSuggestion(index: number): void {
     if (pending.kind === 'code') {
       tr.delete(pending.from, pending.to).setBlockType(pending.from, pending.from, codeBlockSchema.type(ctx), { language: item.value });
     } else {
-      tr.insertText(`!!! ${item.value} "标题"`, pending.from, pending.to);
+      const fence = pending.text.startsWith('！') ? '！！！' : pending.text.startsWith(':') ? ':::' : '!!!';
+      tr.delete(pending.from, pending.to).setBlockType(pending.from, pending.from, visualAdmonition.type(ctx), {
+        opening: `${fence} ${item.value}`, closing: fence
+      });
     }
     view.dispatch(tr.scrollIntoView());
     view.focus();
@@ -275,8 +288,8 @@ const blockDrag = createNoteBlockDrag(
 
 // Unsupported extensions stay in the original Monaco editor instead of being stripped.
 function assertSupported(source: string): void {
-  if (/^\s*:::/mu.test(source) || /^\s*(`{3,}|~{3,})\s*mermaid\b/mu.test(source)) {
-    throw new Error('当前便签含 Mermaid 或提示块，已保留在源码模式，可继续使用原来的编辑与预览。');
+  if (/^\s*(`{3,}|~{3,})\s*mermaid\b/mu.test(source)) {
+    throw new Error('当前便签含 Mermaid，已保留在源码模式，可继续使用原来的编辑与预览。');
   }
   if (/^\s{0,3}\[[^\]]+\]:/mu.test(source) || /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/u.test(source)) {
     throw new Error('当前便签含引用定义或文档元数据，已保留在源码模式，避免转换原始定义。');
@@ -325,6 +338,34 @@ function onEditorKeydown(event: KeyboardEvent): void {
   // Language search and other popup inputs retain their own keyboard behavior.
   if (!target?.closest('.cm-content, .ProseMirror') || target.closest('input, textarea, button')) return;
   const modifier = event.ctrlKey || event.metaKey;
+  if (['Backspace', 'Delete'].includes(event.key) && !modifier && !event.altKey && !event.shiftKey && !target.closest('.cm-editor')) {
+    const handled = instance.editor.action(ctx => {
+      const view = ctx.get(editorViewCtx);
+      const { selection, doc } = view.state;
+      const { $from } = selection;
+      // Only remove a standalone blank paragraph. Images, inline nodes and
+      // paragraphs inside lists/tables retain their normal deletion commands.
+      if (!(selection instanceof TextSelection) || !selection.empty || $from.depth !== 1 || $from.parent.type.name !== 'paragraph') return false;
+      let blank = true;
+      $from.parent.forEach(child => { if (!child.isText || !/^[\t ]*$/u.test(child.text ?? '')) blank = false; });
+      if (!blank) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      const tr = view.state.tr;
+      if (doc.childCount === 1) {
+        // ProseMirror must keep one editable paragraph in an otherwise empty document.
+        if ($from.parent.content.size) tr.delete($from.start(), $from.end());
+      } else {
+        const from = $from.before();
+        tr.delete(from, $from.after());
+        tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(from, tr.doc.content.size)), event.key === 'Backspace' ? -1 : 1));
+      }
+      if (tr.docChanged) view.dispatch(tr.scrollIntoView());
+      view.focus();
+      return true;
+    });
+    if (handled) return;
+  }
   if (suggestion.value && !modifier && !event.altKey && !event.shiftKey) {
     if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) {
       event.preventDefault();
@@ -363,6 +404,18 @@ function onEditorKeydown(event: KeyboardEvent): void {
     const { $from } = selection;
     if (!selection.empty || $from.parent.type.name !== 'paragraph' || $from.parentOffset !== $from.parent.content.size) return;
     const text = $from.parent.textContent;
+    // Two consecutive spaces cancel hint conversion for this input line.
+    const hint = / {2}/u.test(text) ? null : openingMarker(text);
+    if (hint) {
+      event.preventDefault();
+      event.stopPropagation();
+      const from = $from.start();
+      view.dispatch(view.state.tr.delete(from, $from.end())
+        .setBlockType(from, from, visualAdmonition.type(ctx), { opening: text, closing: hint.fence })
+        .scrollIntoView());
+      view.focus();
+      return;
+    }
     const fence = /^(?:`{3}|~{3})([\w+#.-]*)\s*$/u.exec(text);
     if (!fence) return;
     if (fence[1]?.toLowerCase() === 'mermaid') {
@@ -377,12 +430,37 @@ function onEditorKeydown(event: KeyboardEvent): void {
       .scrollIntoView());
     view.focus();
   });
+  if (event.defaultPrevented) return;
+  instance.editor.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    const { selection } = view.state;
+    // A new paragraph gives Crepe an empty block for its placeholder and insert
+    // handle. visualBlankLines serializes adjacent paragraphs with one newline;
+    // paragraph CSS supplies no additional vertical margin.
+    if (!(selection instanceof TextSelection) || selection.$from.depth !== 1 ||
+      selection.$from.parent.type.name !== 'paragraph' || !selection.$from.sameParent(selection.$to)) return;
+    if (splitBlock(view.state, view.dispatch)) {
+      event.preventDefault();
+      event.stopPropagation();
+      view.focus();
+    }
+  });
 }
 
 function runCommand(command: EditorCommand): void {
   if (!instance || !ready.value) return;
-  if (command.type === 'mermaid' || command.type === 'admonition') {
-    sourceModeHint.value = `${command.type === 'mermaid' ? 'Mermaid' : '提示块'}尚未适配可视化编辑。可手动切到源码，选中内容后再使用该按钮；当前内容未改动。`;
+  if (command.type === 'mermaid') {
+    sourceModeHint.value = 'Mermaid 尚未适配可视化编辑。可手动切到源码，选中内容后再使用该按钮；当前内容未改动。';
+    return;
+  }
+  if (command.type === 'admonition') {
+    const selected = instance.editor.action(ctx => {
+      const view = ctx.get(editorViewCtx);
+      return view.state.selection.empty ? '' : ctx.get(serializerCtx)(
+        view.state.schema.topNodeType.create(null, view.state.selection.content().content)
+      );
+    });
+    insertMarkdown(applyTextCommand(selected, { start: 0, end: selected.length }, command).value);
     return;
   }
   if (command.type === 'image' && command.action !== 'link') {
@@ -433,8 +511,24 @@ onMounted(async () => {
       featureConfigs: {
         [Crepe.Feature.BlockEdit]: {
           blockHandle: {
-            root: floatingLayer.value,
+            getPlacement: () => 'left-start',
+            getOffset: () => 8,
             floatingUIOptions: { strategy: 'absolute' }
+          },
+          textGroup: {
+            label: '文本', text: { label: '正文' },
+            h1: { label: '一级标题' }, h2: { label: '二级标题' },
+            h3: { label: '三级标题' }, h4: { label: '四级标题' },
+            h5: { label: '五级标题' }, h6: { label: '六级标题' },
+            quote: { label: '引用' }, divider: { label: '分隔线' }
+          },
+          listGroup: {
+            label: '列表', bulletList: { label: '无序列表' },
+            orderedList: { label: '有序列表' }, taskList: { label: '任务列表' }
+          },
+          advancedGroup: {
+            label: '更多', image: { label: '图片' }, codeBlock: { label: '代码块' },
+            table: { label: '表格' }, math: { label: '数学公式' }
           }
         },
         [Crepe.Feature.CodeMirror]: {
@@ -472,6 +566,10 @@ onMounted(async () => {
     });
     instance = crepe;
     crepe.editor
+      .use(visualAdmonition)
+      .use(visualAdmonitionView)
+      .use(remarkVisualAdmonition)
+      .use(remarkVisualBlankLines)
       .config(ctx => ctx.update(editorViewOptionsCtx, options => ({
         ...options, attributes: { class: `md-editor-preview ${previewThemeClass(props.previewTheme)}` },
         // The nested editor owns its cursor scrolling; don't scroll it a second
@@ -494,6 +592,21 @@ onMounted(async () => {
       }))
       // Preserve source soft breaks, but display them as line breaks for notes.
       .use($view(hardbreakSchema.node, () => () => ({ dom: document.createElement('br') })))
+      .use($prose(() => {
+        const firstBlock = (doc: import('@milkdown/kit/prose/model').Node) => {
+          const first = doc.firstChild;
+          return first ? DecorationSet.create(doc, [
+            Decoration.node(0, first.nodeSize, { class: 'note-first-block' })
+          ]) : DecorationSet.empty;
+        };
+        return new Plugin<DecorationSet>({
+          state: {
+            init: (_, state) => firstBlock(state.doc),
+            apply: (tr, previous) => tr.docChanged ? firstBlock(tr.doc) : previous
+          },
+          props: { decorations(state) { return this.getState(state); } }
+        });
+      }))
       .use($prose(ctx => new Plugin({ view: () => {
         relocateFloatingElements();
         return { update: (view, previous) => {
@@ -570,7 +683,7 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
     <MarkdownToc v-if="tocOpen" class="visual-toc" :items="headings" :active-id="activeHeading" @navigate="navigateHeading" />
     </div>
     <ImageUploader ref="imageUploader" :document-path="documentPath" @insert="insertMarkdown" />
-    <div class="visual-host visual-floating-layer" :class="{ 'md-editor-dark': theme === 'dark' }" @mousedown="blockDrag.start" @dragstart.capture="blockDrag.preventNativeDrag">
+    <div class="visual-host visual-floating-layer" :class="{ 'md-editor-dark': theme === 'dark' }">
       <div ref="floatingLayer" class="milkdown" />
     </div>
     <Teleport to="body">
@@ -583,11 +696,11 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
         </div>
         </ScrollArea>
       </div>
-      <div v-if="suggestion" ref="suggestionRoot" class="input-suggestions" :data-theme="theme" :style="{ left: `${suggestion.left}px`, top: `${suggestion.top}px` }" @mousedown.prevent>
+      <div v-if="suggestion" ref="suggestionRoot" class="input-suggestions" :class="{ 'hint-suggestions': suggestion.kind === 'hint' }" :data-theme="theme" :style="{ left: `${suggestion.left}px`, top: `${suggestion.top}px` }" @mousedown.prevent>
         <ScrollArea label="Markdown 输入建议列表" :horizontal="false" :style="{ height: `${suggestion.height}px` }">
         <div class="suggestion-list" role="listbox" aria-label="Markdown 输入建议">
           <button v-for="(item, index) in suggestion.items" :key="item.value" type="button" role="option" :aria-selected="index === suggestionIndex" @mouseenter="suggestionIndex = index" @click="acceptSuggestion(index)">
-            <span>{{ item.label }}</span><code>{{ item.value }}</code>
+            <span class="suggestion-label"><span v-if="suggestion.kind === 'hint'" class="hint-dot" :class="`hint-dot-${item.value}`" aria-hidden="true" />{{ item.label }}</span><code>{{ item.value }}</code>
           </button>
         </div>
         </ScrollArea>
@@ -597,9 +710,10 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
 </template>
 
 <style scoped>
-.note-visual-editor { position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--text-primary); background: var(--editor-bg); }
+.note-visual-editor { position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: clip; color: var(--text-primary); background: var(--editor-bg); }
+.note-visual-editor > :deep(.toolbar), .visual-message { flex-shrink: 0; }
 .visual-scroll { flex: 1; min-height: 0; }
-.visual-body { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; min-height: 0; min-width: 0; }
+.visual-body { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1 1 0; min-height: 0; min-width: 0; overflow: clip; }
 .visual-body.with-toc { grid-template-columns: minmax(0, 1fr) clamp(150px, 22%, 230px); }
 .visual-host { --md-color: var(--preview-text); background: var(--preview-bg); min-width: 0; width: 100%; box-sizing: border-box; }
 .visual-host :deep(.milkdown) { min-width: 0; max-width: 100%; }
@@ -614,14 +728,30 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
 .visual-floating-layer > .milkdown { position: absolute; inset: 0; background: transparent; }
 .visual-floating-layer :deep(.milkdown-toolbar),
 .visual-floating-layer :deep(.milkdown-link-preview),
-.visual-floating-layer :deep(.milkdown-link-edit),
-.visual-floating-layer :deep(.milkdown-block-handle) { position: absolute; top: 0; left: 0; pointer-events: auto; }
+.visual-floating-layer :deep(.milkdown-link-edit) { position: absolute; top: 0; left: 0; pointer-events: auto; }
 .visual-floating-layer :deep(.milkdown-toolbar) { pointer-events: auto; border: 1px solid var(--border-color); color: var(--text-primary); box-shadow: 0 4px 14px #0002; }
 .visual-floating-layer :deep(.milkdown-toolbar .toolbar-item svg) { color: var(--text-primary); fill: currentColor; }
 .visual-floating-layer :deep(.milkdown-toolbar .toolbar-item.active svg),
 .visual-floating-layer :deep(.milkdown-toolbar .toolbar-item:hover svg) { color: var(--accent); fill: currentColor; }
-.visual-floating-layer :deep(.milkdown-block-handle) { transition: opacity 0.2s; }
-.visual-floating-layer :deep(.milkdown-block-handle[data-show='false']) { pointer-events: none; }
+.visual-host :deep(.milkdown-block-handle) { position: absolute; z-index: 5; transition: opacity 0.2s; }
+.visual-host :deep(.note-admonition.crepe-placeholder::before) { content: none; display: none; }
+.visual-host :deep(.note-admonition .note-admonition-title-input) { flex: 1; min-width: 0; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 2px; background: transparent; color: inherit; font: inherit; line-height: inherit; }
+.visual-host :deep(.note-admonition .note-admonition-title-input::placeholder) { color: inherit; opacity: 1; }
+.visual-host :deep(.note-admonition .note-admonition-title-input:focus) { outline: 1px solid currentColor; outline-offset: 3px; }
+.visual-host :deep(.milkdown .ProseMirror .note-admonition .note-admonition-source) { margin: 0; min-height: 38px; white-space: pre-wrap; overflow-wrap: anywhere; background: transparent; color: inherit; font: inherit; }
+/* Compact slash/insert menu; scoped away from document typography and Monaco. */
+.visual-host :deep(.milkdown-slash-menu) { width: 220px; max-width: calc(100vw - 24px); border: 1px solid var(--border-color); border-radius: 8px; font-size: 12px; }
+.visual-host :deep(.milkdown-slash-menu ul) { margin: 0; list-style: none; }
+.visual-host :deep(.milkdown-slash-menu .tab-group) { padding: 4px 6px; }
+.visual-host :deep(.milkdown-slash-menu .tab-group ul) { padding: 0; gap: 4px; }
+.visual-host :deep(.milkdown-slash-menu .tab-group li) { padding: 4px 8px; border-radius: 4px; font-size: 12px; line-height: 18px; }
+.visual-host :deep(.milkdown-slash-menu .menu-groups) { padding: 4px 6px 6px; max-height: min(320px, max(80px, calc(100vh - 160px))); scrollbar-width: thin; scroll-behavior: auto; }
+.visual-host :deep(.milkdown-slash-menu .menu-group h6) { margin: 0; padding: 6px 8px 4px; font-size: 11px; line-height: 16px; text-transform: none; color: var(--text-secondary); }
+.visual-host :deep(.milkdown-slash-menu .menu-group ul) { padding: 0; }
+.visual-host :deep(.milkdown-slash-menu .menu-group li) { min-width: 0; min-height: 30px; margin: 0; padding: 5px 8px; gap: 8px; border-radius: 5px; }
+.visual-host :deep(.milkdown-slash-menu .menu-group li > span) { font-size: 12px; font-weight: 400; line-height: 20px; }
+.visual-host :deep(.milkdown-slash-menu .menu-group li svg) { width: 16px; height: 16px; flex-shrink: 0; color: var(--text-secondary); fill: currentColor; }
+.visual-host :deep(.milkdown-slash-menu .menu-group + .menu-group::before) { margin: 4px 8px; }
 .note-visual-editor:has(.milkdown-link-preview[data-show='true']) :deep(.milkdown-toolbar),
 .note-visual-editor:has(.milkdown-link-edit[data-show='true']) :deep(.milkdown-toolbar) { display: none; }
 .code-language-menu { position: fixed; z-index: 10030; display: flex; flex-direction: column; width: min(300px, calc(100vw - 16px)); padding: 8px; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 8px; background: var(--panel-bg); color: var(--text-primary); box-shadow: 0 6px 22px #0003; font-size: 13px; }
@@ -635,6 +765,15 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
 .suggestion-list button { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 33px; padding: 6px 10px; border: 0; text-align: left; color: inherit; background: transparent; cursor: pointer; }
 .suggestion-list button[aria-selected='true'], .suggestion-list button:hover { background: var(--control-hover); color: var(--accent); }
 .suggestion-list code { font-size: 11px; opacity: .8; }
+.hint-suggestions { width: min(180px, calc(100vw - 16px)); }
+.hint-suggestions .suggestion-list { padding: 0 4px; }
+.hint-suggestions .suggestion-list button { gap: 8px; padding: 6px 8px; border-radius: 4px; }
+.suggestion-label { display: inline-flex; align-items: center; gap: 8px; }
+.hint-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #64748b; }
+.hint-dot-info { background: #0284c7; }
+.hint-dot-tip { background: #059669; }
+.hint-dot-warning { background: #d97706; }
+.hint-dot-danger { background: #dc2626; }
 .visual-message { margin: 0; padding: 8px 16px; font-size: 12px; color: var(--text-secondary); background: var(--panel-bg); }
 .visual-message button { margin: 4px 6px 0 0; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; color: var(--accent); background: var(--control-hover); cursor: pointer; }
 .visual-host :deep(.milkdown) {
@@ -658,7 +797,15 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
   --crepe-font-code: Consolas, 'Courier New', monospace;
   --crepe-base-font-size: 16px;
 }
-.visual-host :deep(.milkdown .ProseMirror) { padding: 28px clamp(24px, 5vw, 64px) 100px; max-width: 960px; margin: auto; min-height: 320px; font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+.visual-host :deep(.milkdown .ProseMirror) { padding: 28px 64px 100px; max-width: 960px; margin: auto; min-height: 320px; font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+/* Two 32px actions + 2px gap + 8px offset must fit inside the scrolling
+   document. Keep this gutter across preview themes and narrow windows. */
+.visual-host :deep(.milkdown .ProseMirror.md-editor-preview) { padding-left: 84px; }
+/* Anchor the top spacing to the first document block, not DOM :first-child:
+   editor widgets can appear before it when focus or selection changes. */
+.visual-host :deep(.milkdown .ProseMirror.md-editor-preview > .note-first-block) { margin-top: 0; margin-block-start: 0; }
+/* Source blank lines are editable paragraphs, rather than paragraph margins. */
+.visual-host :deep(.milkdown .ProseMirror.md-editor-preview > p) { margin-block: 0; min-height: 1.5em; }
 .visual-host :deep(.ProseMirror.md-editor-preview) { color: var(--md-theme-color, var(--preview-text)); background-color: var(--md-theme-bg-color, var(--preview-bg)); }
 .visual-host :deep(.milkdown .ProseMirror)::selection,
 .visual-host :deep(.milkdown .ProseMirror *)::selection { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 28%, var(--editor-bg)); }

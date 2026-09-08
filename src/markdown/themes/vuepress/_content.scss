@@ -43,8 +43,8 @@
   h4 { font-size: 18.4px; }
   h5 { font-size: 16.8px; }
   h6 { font-size: 16px; }
-  > :first-child { margin-top: 0; }
-  > :is(h1, h2, h3, h4, h5, h6):first-child {
+  &:not(.ProseMirror) > :first-child { margin-top: 0; }
+  > :is(h1, h2, h3, h4, h5, h6):is(:first-child, .note-first-block) {
     margin-bottom: 16px;
     + p, + pre, + .md-editor-code, + .md-admonition { margin-top: 32px; }
   }
