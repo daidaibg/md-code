@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { deleteStoredNote, loadStoredNotes, saveStoredNote, type StoredNote } from '@/notes/noteService';
 
 export interface Note extends StoredNote {}
@@ -23,9 +23,50 @@ export const useNotesStore = defineStore('notes', () => {
   const loading = ref(false);
   const error = ref('');
   const activeNote = computed(() => notes.value.find(note => note.id === activeId.value) ?? null);
-  const orderedNotes = computed(() => [...notes.value].sort((a, b) => b.updatedAt - a.updatedAt));
+  const listOrder = ref<string[]>([]);
+  const pinnedIds = ref<string[]>([]);
+  let listStorageKey = '';
+  function isPinned(id: string): boolean { return pinnedIds.value.includes(id); }
+  const orderedNotes = computed(() => [...notes.value].sort((a, b) => {
+    const pinned = Number(isPinned(b.id)) - Number(isPinned(a.id));
+    if (pinned) return pinned;
+    const ai = listOrder.value.indexOf(a.id);
+    const bi = listOrder.value.indexOf(b.id);
+    if (ai < 0 && bi < 0) return b.updatedAt - a.updatedAt;
+    if (ai < 0) return -1;
+    if (bi < 0) return 1;
+    return ai - bi;
+  }));
+  function reloadListPreferences(): void {
+    try {
+      const value = JSON.parse(localStorage.getItem(listStorageKey) ?? '{}');
+      listOrder.value = Array.isArray(value.order) ? value.order.filter((id: unknown) => typeof id === 'string') : [];
+      pinnedIds.value = Array.isArray(value.pinned) ? value.pinned.filter((id: unknown) => typeof id === 'string') : [];
+    } catch { listOrder.value = []; pinnedIds.value = []; }
+  }
+  function saveListPreferences(order: string[], pinned: string[]): void {
+    try {
+      localStorage.setItem(listStorageKey, JSON.stringify({ order, pinned }));
+      listOrder.value = order;
+      pinnedIds.value = pinned;
+    } catch (reason) { error.value = `保存便签顺序失败：${String(reason)}`; }
+  }
+  function togglePinned(id: string): void {
+    const pinned = isPinned(id) ? pinnedIds.value.filter(item => item !== id) : [...pinnedIds.value, id];
+    saveListPreferences([id, ...orderedNotes.value.map(note => note.id).filter(item => item !== id)], pinned);
+  }
+  function moveNote(id: string, targetId: string, after: boolean): void {
+    if (id === targetId || isPinned(id) !== isPinned(targetId)) return;
+    const order = orderedNotes.value.map(note => note.id).filter(item => item !== id);
+    const index = order.indexOf(targetId);
+    if (index < 0) return;
+    order.splice(index + Number(after), 0, id);
+    saveListPreferences(order, [...pinnedIds.value]);
+  }
 
   async function load(directory: string): Promise<void> {
+    listStorageKey = `md-code:note-list:${directory.trim()}`;
+    reloadListPreferences();
     loading.value = true;
     error.value = '';
     try {
@@ -109,5 +150,9 @@ export const useNotesStore = defineStore('notes', () => {
     if (activeId.value === id) activeId.value = notes.value[Math.min(index, notes.value.length - 1)]?.id ?? null;
   }
 
-  return { notes, activeId, activeNote, orderedNotes, loading, error, noteTitle, load, create, updateContent, renameTitle, persist, remove, applyExternalSave, applyExternalDelete };
+  return { notes, activeId, activeNote, orderedNotes, listOrder, pinnedIds, loading, error, noteTitle, load, create, updateContent, renameTitle, persist, remove, applyExternalSave, applyExternalDelete, isPinned, togglePinned, moveNote, reloadListPreferences };
 });
+
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useNotesStore, import.meta.hot));
+}

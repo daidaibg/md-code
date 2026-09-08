@@ -32,7 +32,7 @@ const emit = defineEmits<{
   'close-settings': [];
   'close-notes': [];
   'detach-notes': [];
-  'close-tab-scope': [target: TabTarget, scope: TabCloseScope];
+  'close-tab-scope': [target: TabTarget, scope: TabCloseScope, order: TabTarget[]];
 }>();
 
 type UtilityTab = 'settings' | 'notes';
@@ -58,14 +58,24 @@ const scrollbarThumbOffset = ref(0);
 const scrollbarDragging = ref(false);
 const notesDetachDragging = ref(false);
 const notesDetachReady = ref(false);
+const notesTabIndex = ref<number | null>(null);
+const NOTES_TAB_ID = 'utility:notes';
+let dragOrder: string[] = [];
+const effectiveNotesIndex = computed(() => Math.min(notesTabIndex.value ?? props.documents.length, props.documents.length));
+const renderedTabs = computed(() => {
+  const tabs: Array<EditorDocument | null> = [...props.documents];
+  if (props.notesOpen) tabs.splice(effectiveNotesIndex.value, 0, null);
+  return tabs;
+});
 const contextDocument = computed(
   () => props.documents.find((document) => document.id === contextDocumentId.value) ?? null
 );
-const openTabTargets = computed<TabTarget[]>(() => [
-  ...props.documents.map(document => ({ kind: 'document' as const, id: document.id })),
-  ...(props.settingsOpen ? [{ kind: 'settings' as const }] : []),
-  ...(props.notesOpen ? [{ kind: 'notes' as const }] : [])
-]);
+const openTabTargets = computed<TabTarget[]>(() => {
+  const tabs: TabTarget[] = props.documents.map(document => ({ kind: 'document', id: document.id }));
+  if (props.notesOpen) tabs.splice(effectiveNotesIndex.value, 0, { kind: 'notes' });
+  if (props.settingsOpen) tabs.push({ kind: 'settings' });
+  return tabs;
+});
 const contextTarget = computed<TabTarget | null>(() =>
   contextDocument.value
     ? { kind: 'document', id: contextDocument.value.id }
@@ -89,8 +99,6 @@ let tabDragManager: TabDragManager | undefined;
 let tabsResizeObserver: ResizeObserver | undefined;
 let scrollbarDragStartX = 0;
 let scrollbarDragStartLeft = 0;
-let notesDragStartX = 0;
-let notesDragStartY = 0;
 let suppressNotesClick = false;
 
 const duplicateNames = computed(() => {
@@ -159,7 +167,7 @@ function runTabCloseAction(scope: TabCloseScope): void {
   const target = contextTarget.value;
   if (!target || props.busy) return;
   closeContextMenu();
-  emit('close-tab-scope', target, scope);
+  emit('close-tab-scope', target, scope, openTabTargets.value);
 }
 
 function runContextAction(action: ContextAction): void {
@@ -290,48 +298,50 @@ function activateNotes(): void {
   if (!suppressNotesClick) emit('activate-notes');
 }
 
-function onNotesPointerdown(event: PointerEvent): void {
-  if (event.button !== 0 || (event.target as HTMLElement).closest('.close-button')) return;
-  notesDragStartX = event.clientX;
-  notesDragStartY = event.clientY;
-  notesDetachDragging.value = false;
-  notesDetachReady.value = false;
-  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+function trackNotesDrag(event: PointerEvent): void {
+  if (!notesDetachDragging.value) return;
+  notesDetachReady.value = event.clientX < 0 || event.clientY < 0 ||
+    event.clientX >= window.innerWidth || event.clientY >= window.innerHeight;
 }
-
-function onNotesPointermove(event: PointerEvent): void {
-  const tab = event.currentTarget as HTMLElement;
-  if (!tab.hasPointerCapture(event.pointerId)) return;
-  const distance = Math.hypot(event.clientX - notesDragStartX, event.clientY - notesDragStartY);
-  notesDetachDragging.value = distance >= 48;
-  notesDetachReady.value = distance >= 130;
-}
-
-function finishNotesDrag(event: PointerEvent, cancelled = false): void {
-  const tab = event.currentTarget as HTMLElement;
-  if (!tab.hasPointerCapture(event.pointerId)) return;
-  tab.releasePointerCapture(event.pointerId);
-  const shouldDetach = !cancelled && notesDetachReady.value;
-  if (notesDetachDragging.value) {
-    suppressNotesClick = true;
-    window.setTimeout(() => { suppressNotesClick = false; }, 0);
-  }
-  notesDetachDragging.value = false;
-  notesDetachReady.value = false;
-  if (shouldDetach) emit('detach-notes');
-}
+function cancelNotesDrag(): void { notesDetachReady.value = false; }
 
 onMounted(() => {
   if (tabsRoot.value) {
     tabDragManager = new TabDragManager(tabsRoot.value, {
-      onReorder: ({ documentId, oldIndex, newIndex }) =>
-        emit('reorder', documentId, oldIndex, newIndex)
+      onDragStart: ({ documentId }) => {
+        dragOrder = renderedTabs.value.map(tab => tab?.id ?? NOTES_TAB_ID);
+        notesDetachDragging.value = documentId === NOTES_TAB_ID;
+        notesDetachReady.value = false;
+      },
+      onReorder: ({ documentId, oldIndex, newIndex }) => {
+        const order = [...dragOrder];
+        order.splice(oldIndex, 1);
+        order.splice(newIndex, 0, documentId);
+        const notesIndex = order.indexOf(NOTES_TAB_ID);
+        if (notesIndex >= 0) notesTabIndex.value = notesIndex;
+        if (documentId !== NOTES_TAB_ID) {
+          const oldDocumentIndex = props.documents.findIndex(tab => tab.id === documentId);
+          const newDocumentIndex = order.filter(id => id !== NOTES_TAB_ID).indexOf(documentId);
+          emit('reorder', documentId, oldDocumentIndex, newDocumentIndex);
+        }
+      },
+      onDragEnd: () => {
+        const detach = notesDetachDragging.value && notesDetachReady.value;
+        suppressNotesClick = notesDetachDragging.value;
+        window.setTimeout(() => { suppressNotesClick = false; }, 0);
+        notesDetachDragging.value = false;
+        notesDetachReady.value = false;
+        if (detach) emit('detach-notes');
+      }
     });
     tabsResizeObserver = new ResizeObserver(updateTabsScrollbar);
     tabsResizeObserver.observe(tabsRoot.value);
     updateTabsScrollbar();
   }
   document.addEventListener('pointerdown', onDocumentPointerdown);
+  document.addEventListener('pointermove', trackNotesDrag, true);
+  document.addEventListener('pointerup', trackNotesDrag, true);
+  document.addEventListener('pointercancel', cancelNotesDrag, true);
   document.addEventListener('keydown', onDocumentKeydown);
   window.addEventListener('resize', closeContextMenu);
   window.addEventListener('blur', closeContextMenu);
@@ -343,6 +353,9 @@ onBeforeUnmount(() => {
   tabsResizeObserver?.disconnect();
   tabsResizeObserver = undefined;
   document.removeEventListener('pointerdown', onDocumentPointerdown);
+  document.removeEventListener('pointermove', trackNotesDrag, true);
+  document.removeEventListener('pointerup', trackNotesDrag, true);
+  document.removeEventListener('pointercancel', cancelNotesDrag, true);
   document.removeEventListener('keydown', onDocumentKeydown);
   window.removeEventListener('resize', closeContextMenu);
   window.removeEventListener('blur', closeContextMenu);
@@ -379,9 +392,9 @@ watch(
         @scroll.passive="onTabsScroll"
         @wheel="onTabsWheel"
       >
+        <template v-for="document in renderedTabs" :key="document?.id ?? 'utility:notes'">
         <button
-          v-for="document in documents"
-          :key="document.id"
+          v-if="document"
           type="button"
           class="document-tab"
           :data-document-id="document.id"
@@ -417,6 +430,25 @@ watch(
           </span>
         </button>
         <button
+          v-else
+          type="button"
+          class="document-tab"
+          :data-document-id="NOTES_TAB_ID"
+          data-workspace-tab="notes"
+          :class="{ active: activeWorkspace === 'notes' }"
+          title="便签"
+          @click="activateNotes"
+          @contextmenu.prevent.stop="openUtilityContextMenu($event, 'notes')"
+          @auxclick.middle.prevent="emit('close-notes')"
+        >
+          <span class="utility-icon" aria-hidden="true">▤</span>
+          <span class="filename">便签</span>
+          <span class="close-button" role="button" tabindex="0" aria-label="关闭便签" @click.stop="emit('close-notes')" @keydown.enter.stop="emit('close-notes')">
+            <ToolbarIcon name="close" />
+          </span>
+        </button>
+        </template>
+        <button
           v-if="settingsOpen"
           type="button"
           class="utility-tab"
@@ -433,27 +465,7 @@ watch(
             <ToolbarIcon name="close" />
           </span>
         </button>
-        <button
-          v-if="notesOpen"
-          type="button"
-          class="utility-tab notes-utility-tab"
-          data-workspace-tab="notes"
-          :class="{ active: activeWorkspace === 'notes', dragging: notesDetachDragging }"
-          title="便签"
-          @click="activateNotes"
-          @contextmenu.prevent.stop="openUtilityContextMenu($event, 'notes')"
-          @pointerdown="onNotesPointerdown"
-          @pointermove="onNotesPointermove"
-          @pointerup="finishNotesDrag"
-          @pointercancel="finishNotesDrag($event, true)"
-          @auxclick.middle.prevent="emit('close-notes')"
-        >
-          <span class="utility-icon" aria-hidden="true">▤</span>
-          <span class="filename">便签</span>
-          <span class="close-button" role="button" tabindex="0" aria-label="关闭便签" @click.stop="emit('close-notes')" @keydown.enter.stop="emit('close-notes')">
-            <ToolbarIcon name="close" />
-          </span>
-        </button>
+
       </nav>
 
       <div v-show="hasHorizontalOverflow" class="tabs-scrollbar" aria-hidden="true">
@@ -481,8 +493,9 @@ watch(
   </div>
 
   <div v-if="notesDetachDragging" class="detach-hint" :class="{ ready: notesDetachReady }" role="status">
-    {{ notesDetachReady ? '松开鼠标，在独立窗口打开便签' : '继续拖动可在独立窗口打开便签' }}
+    {{ notesDetachReady ? '松开鼠标，在独立窗口打开便签' : '拖动排序；拖出应用窗口后松开可独立打开' }}
   </div>
+
 
   <section
     v-if="contextTarget"
@@ -716,14 +729,6 @@ watch(
 .utility-tab {
   min-width: 92px;
   cursor: pointer;
-}
-
-.notes-utility-tab {
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-
-  &.dragging { cursor: grabbing; }
 }
 
 .utility-icon {

@@ -40,7 +40,7 @@ export class TabDragManager {
   private readonly sortable: Sortable;
   private activeSession: TabDragSession | null = null;
   private orderBeforeDrag: string[] = [];
-  private orderEndAnchor: ChildNode | null = null;
+  private nodesBeforeDrag: ChildNode[] = [];
   private destroyed = false;
 
   constructor(root: HTMLElement, options: TabDragManagerOptions) {
@@ -81,26 +81,11 @@ export class TabDragManager {
     this.sortable.destroy();
   }
 
-  private restoreDomOrder(order: readonly string[], endAnchor: ChildNode | null): void {
-    const tabs = new Map(
-      [...this.root.querySelectorAll<HTMLElement>(TAB_SELECTOR)].map((tab) => [
-        tab.dataset.documentId ?? '',
-        tab
-      ])
-    );
-    const insertionPoint = endAnchor?.parentNode === this.root ? endAnchor : null;
-    for (const documentId of order) {
-      const tab = tabs.get(documentId);
-      if (tab) this.root.insertBefore(tab, insertionPoint);
-    }
-  }
-
   private handleStart(event: SortableEvent): void {
     const documentId = documentIdFromEvent(event);
     if (!documentId) return;
-    this.orderBeforeDrag = this.sortable.toArray();
-    const tabs = [...this.root.querySelectorAll<HTMLElement>(TAB_SELECTOR)];
-    this.orderEndAnchor = tabs.at(-1)?.nextSibling ?? null;
+    this.orderBeforeDrag = [...this.root.querySelectorAll<HTMLElement>(TAB_SELECTOR)].map(tab => tab.dataset.documentId ?? '');
+    this.nodesBeforeDrag = [...this.root.childNodes];
     this.root.classList.add('tab-list-dragging');
     this.prepareFallbackMirror();
     this.activeSession = { documentId, source: this.root };
@@ -140,19 +125,21 @@ export class TabDragManager {
       // Sortable 先直接移动 DOM，但 Vue 的旧 VNode 仍记录拖拽前顺序。
       // 等 Sortable 完成本次 onEnd 的内部收尾后，再还原 DOM 并修改 Tab 数据，
       // 避免真实 DOM 与 Vue 的旧 VNode 顺序脱节，影响后续新建 Tab 的插入位置。
-      const orderBeforeDrag = [...this.orderBeforeDrag];
-      const orderEndAnchor = this.orderEndAnchor;
+      const nodesBeforeDrag = [...this.nodesBeforeDrag];
       queueMicrotask(() => {
         if (this.destroyed) return;
         // v-for 的 Tab 位于 Vue Fragment 边界内，不能 append 到结束锚点之后。
-        this.restoreDomOrder(orderBeforeDrag, orderEndAnchor);
+        // Keep utility tabs and Vue Fragment anchors in their original places.
+        for (const node of nodesBeforeDrag) {
+          if (node.parentNode === this.root) this.root.appendChild(node);
+        }
         this.options.onReorder({ documentId, oldIndex, newIndex });
       });
     }
     this.options.onDragEnd?.(this.activeSession ?? { documentId, source: this.root });
     this.activeSession = null;
     this.orderBeforeDrag = [];
-    this.orderEndAnchor = null;
+    this.nodesBeforeDrag = [];
   }
 
   private prepareFallbackMirror(): void {

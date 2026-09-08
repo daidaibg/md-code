@@ -5,6 +5,7 @@ import { Crepe } from '@milkdown/crepe';
 import { editorViewCtx, editorViewOptionsCtx, serializerCtx } from '@milkdown/kit/core';
 import { $prose, $remark, $view, callCommand, insert, replaceAll } from '@milkdown/kit/utils';
 import { Plugin, TextSelection } from '@milkdown/kit/prose/state';
+import { Fragment, Slice } from '@milkdown/kit/prose/model';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { codeBlockConfig } from '@milkdown/kit/component/code-block';
 import { EditorView as CodeMirrorView } from '@codemirror/view';
@@ -52,6 +53,69 @@ const emit = defineEmits<{
   unavailable: [reason: string];
 }>();
 const host = ref<HTMLElement>();
+const clipboardMenu = ref<{ left: number; top: number; selected: boolean }>();
+function closeClipboardMenu(): void { clipboardMenu.value = undefined; }
+function openClipboardMenu(event: MouseEvent): void {
+  const target = event.target as HTMLElement;
+  if (!instance || target.closest('.cm-editor, input, textarea') || !target.closest('.ProseMirror')) return;
+  event.preventDefault();
+  instance.editor.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    if (view.state.selection.empty) {
+      const position = view.posAtCoords({ left: event.clientX, top: event.clientY });
+      if (position) view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(position.pos))));
+    }
+    clipboardMenu.value = { left: Math.max(6, Math.min(event.clientX, window.innerWidth - 176)),
+      top: Math.max(6, Math.min(event.clientY, window.innerHeight - 146)), selected: !view.state.selection.empty };
+  });
+}
+async function clipboardAction(action: 'copy' | 'copy-text' | 'paste' | 'paste-text'): Promise<void> {
+  closeClipboardMenu();
+  if (!instance) return;
+  const view = instance.editor.action(ctx => ctx.get(editorViewCtx));
+  const originalState = view.state;
+  view.focus();
+  try {
+    if (action === 'copy') {
+      if (!document.execCommand('copy')) throw new Error('复制未完成');
+    } else if (action === 'copy-text') {
+      const { from, to } = view.state.selection;
+      await navigator.clipboard.writeText(view.state.doc.textBetween(from, to, '\n', '\n'));
+    } else {
+      let text = '';
+      let html = '';
+      if (action === 'paste' && navigator.clipboard.read) {
+        for (const item of await navigator.clipboard.read()) {
+          if (item.types.includes('text/html')) html = await (await item.getType('text/html')).text();
+          if (item.types.includes('text/plain')) text = await (await item.getType('text/plain')).text();
+          if (html || text) break;
+        }
+      } else text = await navigator.clipboard.readText();
+      if (view.isDestroyed || view.state !== originalState) return;
+      if (action === 'paste' && html) view.pasteHTML(html);
+      else if (text) {
+        if (action === 'paste-text') {
+          const { schema, selection } = view.state;
+          if (selection.$from.parent.type.spec.code) view.dispatch(view.state.tr.insertText(text));
+          else {
+            const paragraphs = text.replace(/\r\n?/gu, '\n').split('\n').map(line =>
+              schema.nodes.paragraph.create(null, line ? schema.text(line) : undefined));
+            view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(paragraphs), 1, 1)).scrollIntoView());
+          }
+        } else view.pasteText(text);
+      }
+      view.focus();
+    }
+  } catch (reason) { sourceModeHint.value = `剪贴板操作失败：${reason instanceof Error ? reason.message : String(reason)}`; }
+}
+onMounted(() => {
+  document.addEventListener('pointerdown', closeClipboardMenu);
+  window.addEventListener('blur', closeClipboardMenu);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeClipboardMenu);
+  window.removeEventListener('blur', closeClipboardMenu);
+});
 const floatingLayer = ref<HTMLElement>();
 let floatingObserver: MutationObserver | undefined;
 function relocateFloatingElements(): void {
@@ -234,7 +298,6 @@ function updateSuggestions(): void {
     const kind = /^[!！:]/u.test(match.groups?.marker ?? '') ? 'hint' : 'code';
     const query = (match.groups?.query ?? '').toLowerCase();
     // Mermaid remains an explicit source-mode operation, not a silently converted block.
-    if (kind === 'code' && query === 'mermaid') { suggestion.value = undefined; return; }
     let items = (kind === 'code' ? codeSuggestions : hintSuggestions)
       .filter(item => !query || item.label.toLowerCase().includes(query) || item.value.includes(query));
     if (!items.length && kind === 'code') items = [{ label: `使用语言：${query}`, value: query }];
@@ -288,11 +351,10 @@ const blockDrag = createNoteBlockDrag(
 
 // Unsupported extensions stay in the original Monaco editor instead of being stripped.
 function assertSupported(source: string): void {
-  if (/^\s*(`{3,}|~{3,})\s*mermaid\b/mu.test(source)) {
-    throw new Error('当前便签含 Mermaid，已保留在源码模式，可继续使用原来的编辑与预览。');
-  }
+  // Mermaid is a fenced code block: preserve its language and source in the
+  // visual editor. The shared Markdown preview renders the diagram.
   if (/^\s{0,3}\[[^\]]+\]:/mu.test(source) || /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/u.test(source)) {
-    throw new Error('当前便签含引用定义或文档元数据，已保留在源码模式，避免转换原始定义。');
+    throw new Error('当前文档含引用定义或文档元数据，已保留在源码模式，避免转换原始定义。');
   }
 }
 
@@ -300,7 +362,7 @@ interface MarkdownNode { type: string; children?: MarkdownNode[] }
 function checkNodes(node: MarkdownNode): void {
   if (['html', 'footnoteDefinition', 'footnoteReference', 'yaml', 'toml',
     'containerDirective', 'leafDirective', 'textDirective'].includes(node.type)) {
-    throw new Error('当前便签含尚未适配的扩展语法，已保留在源码模式，原文不会转换。');
+    throw new Error('当前文档含尚未适配的扩展语法，已保留在源码模式，原文不会转换。');
   }
   node.children?.forEach(checkNodes);
 }
@@ -401,6 +463,18 @@ function onEditorKeydown(event: KeyboardEvent): void {
   instance.editor.action(ctx => {
     const view = ctx.get(editorViewCtx);
     const { selection } = view.state;
+    if (!(selection instanceof TextSelection) ||
+      selection.$from.parent.type.name !== 'note_admonition' ||
+      !selection.$from.sameParent(selection.$to)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    view.dispatch(view.state.tr.insertText('\n').scrollIntoView());
+    view.focus();
+  });
+  if (event.defaultPrevented) return;
+  instance.editor.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    const { selection } = view.state;
     const { $from } = selection;
     if (!selection.empty || $from.parent.type.name !== 'paragraph' || $from.parentOffset !== $from.parent.content.size) return;
     const text = $from.parent.textContent;
@@ -418,10 +492,6 @@ function onEditorKeydown(event: KeyboardEvent): void {
     }
     const fence = /^(?:`{3}|~{3})([\w+#.-]*)\s*$/u.exec(text);
     if (!fence) return;
-    if (fence[1]?.toLowerCase() === 'mermaid') {
-      sourceModeHint.value = 'Mermaid 请使用源码模式编写并预览，当前不会自动切换。';
-      return;
-    }
     event.preventDefault();
     event.stopPropagation();
     const from = $from.start();
@@ -450,7 +520,7 @@ function onEditorKeydown(event: KeyboardEvent): void {
 function runCommand(command: EditorCommand): void {
   if (!instance || !ready.value) return;
   if (command.type === 'mermaid') {
-    sourceModeHint.value = 'Mermaid 尚未适配可视化编辑。可手动切到源码，选中内容后再使用该按钮；当前内容未改动。';
+    insertMarkdown(applyTextCommand('', { start: 0, end: 0 }, command).value);
     return;
   }
   if (command.type === 'admonition') {
@@ -566,6 +636,32 @@ onMounted(async () => {
     });
     instance = crepe;
     crepe.editor
+      .config(ctx => ctx.update(codeBlockConfig.key, previous => ({
+        ...previous,
+        previewLabel: '图表预览',
+        previewOnlyByDefault: true,
+        previewToggleButton: previewOnly => previewOnly ? '编辑源码' : '显示图表',
+        renderPreview: (language, content, applyPreview) => {
+          if (language.toLowerCase() !== 'mermaid') return previous.renderPreview(language, content, applyPreview);
+          const diagram = document.createElement('div');
+          diagram.className = 'visual-mermaid-preview';
+          diagram.textContent = '正在渲染图表…';
+          void import('mermaid').then(async ({ default: mermaid }) => {
+            if (disposed) return;
+            mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: props.theme === 'dark' ? 'dark' : 'default' });
+            const result = await mermaid.render(`visual-mermaid-${globalThis.crypto.randomUUID()}`, content);
+            if (disposed) return;
+            diagram.innerHTML = result.svg;
+            // Milkdown sanitizes/copies the supplied element; mutating the
+            // original loading element cannot update the rendered preview.
+            applyPreview(diagram);
+          }).catch(error => {
+            diagram.textContent = `图表暂时无法渲染，请点击“编辑源码”修改：${error instanceof Error ? error.message : String(error)}`;
+            if (!disposed) applyPreview(diagram);
+          });
+          return diagram;
+        }
+      })))
       .use(visualAdmonition)
       .use(visualAdmonitionView)
       .use(remarkVisualAdmonition)
@@ -678,7 +774,7 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
     <p v-if="!ready" class="visual-message">正在加载可视化编辑器…</p>
     <div class="visual-body" :class="{ 'with-toc': tocOpen }">
     <ScrollArea label="便签可视化编辑" class="visual-scroll" :horizontal="false" @viewport-change="scrollViewport = $event" @scroll="updateActiveHeading(); dismissSuggestions(); closeLanguageMenu()">
-      <div ref="host" class="visual-host md-editor markdown-preview-host" :class="[themeScope, { 'md-editor-dark': theme === 'dark' }]" @click.capture="openLanguageMenu" @keydown.capture="onEditorKeydown" @mousedown="blockDrag.start" @dragstart.capture="blockDrag.preventNativeDrag" />
+      <div ref="host" class="visual-host md-editor markdown-preview-host" :class="[themeScope, { 'md-editor-dark': theme === 'dark' }]" @contextmenu="openClipboardMenu" @click.capture="openLanguageMenu" @keydown.capture="onEditorKeydown" @mousedown="blockDrag.start" @dragstart.capture="blockDrag.preventNativeDrag" />
     </ScrollArea>
     <MarkdownToc v-if="tocOpen" class="visual-toc" :items="headings" :active-id="activeHeading" @navigate="navigateHeading" />
     </div>
@@ -687,6 +783,12 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
       <div ref="floatingLayer" class="milkdown" />
     </div>
     <Teleport to="body">
+      <div v-if="clipboardMenu" class="note-clipboard-menu" role="menu" :data-theme="theme" :style="{ left: `${clipboardMenu.left}px`, top: `${clipboardMenu.top}px` }" @pointerdown.stop @mousedown.prevent @contextmenu.prevent @keydown.esc="closeClipboardMenu">
+        <button v-if="clipboardMenu.selected" role="menuitem" @click="clipboardAction('copy')">复制</button>
+        <button v-if="clipboardMenu.selected" role="menuitem" @click="clipboardAction('copy-text')">仅复制文本</button>
+        <button role="menuitem" @click="clipboardAction('paste')">粘贴</button>
+        <button role="menuitem" @click="clipboardAction('paste-text')">仅粘贴文本</button>
+      </div>
       <div v-if="languageMenu" ref="languageRoot" class="code-language-menu" :data-theme="theme" :style="{ left: `${languageMenu.left}px`, top: `${languageMenu.top}px`, maxHeight: `${languageMenu.height}px` }" @keydown="languageKeydown">
         <input ref="languageSearch" v-model="languageQuery" aria-label="搜索代码语言" placeholder="搜索语言，如 JavaScript、JSON" />
         <ScrollArea class="code-language-scroll" label="代码语言列表" :horizontal="false" :style="{ height: `${Math.min(Math.max(filteredLanguages.length, 1) * 33, languageMenu.height - 60)}px` }">
@@ -718,6 +820,17 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
 .visual-host { --md-color: var(--preview-text); background: var(--preview-bg); min-width: 0; width: 100%; box-sizing: border-box; }
 .visual-host :deep(.milkdown) { min-width: 0; max-width: 100%; }
 .visual-host :deep(.milkdown .ProseMirror) { width: 100%; min-width: 0; box-sizing: border-box; }
+.visual-host :deep(.visual-mermaid-preview) { padding: 12px; overflow: auto; color: var(--text-primary); background: var(--panel-bg); font-size: 13px; white-space: normal; }
+.visual-host :deep(.visual-mermaid-preview svg) { display: block; max-width: 100%; height: auto; margin: auto; }
+.visual-host :deep(.milkdown-code-block:has(.visual-mermaid-preview)) { background: var(--panel-bg); color: var(--text-primary); border: 1px solid var(--border-subtle); }
+.visual-host :deep(.milkdown-code-block:has(.visual-mermaid-preview) .tools)::before { display: none; }
+.visual-host :deep(.milkdown-code-block:has(.visual-mermaid-preview) .tools) { padding-left: 0; }
+.note-clipboard-menu { position: fixed; z-index: 240; width: 170px; padding: 5px; border: 1px solid var(--menu-popup-border); border-radius: 5px; color: var(--menu-text); background: var(--menu-popup-bg); box-shadow: var(--popup-shadow); }
+.note-clipboard-menu button { display: block; width: 100%; height: 30px; border: 0; border-radius: 3px; padding: 0 10px; text-align: left; color: inherit; background: transparent; font-size: 12px; cursor: pointer; }
+.note-clipboard-menu button:hover { background: var(--menu-selection-bg); color: var(--menu-selection-text); }
+.visual-host :deep(.milkdown .ProseMirror),
+.visual-host :deep(.note-admonition-source),
+.visual-host :deep(.note-admonition-title-input) { caret-color: var(--text-primary); }
 /* The language menu is teleported; its unused inline placeholder must not
    contribute positioned overflow to the document viewport. */
 .visual-host :deep(.milkdown-code-block .language-picker) { display: none; }
@@ -805,7 +918,7 @@ defineExpose({ focus, undo, redo, selectAll, runCommand });
    editor widgets can appear before it when focus or selection changes. */
 .visual-host :deep(.milkdown .ProseMirror.md-editor-preview > .note-first-block) { margin-top: 0; margin-block-start: 0; }
 /* Source blank lines are editable paragraphs, rather than paragraph margins. */
-.visual-host :deep(.milkdown .ProseMirror.md-editor-preview > p) { margin-block: 0; min-height: 1.5em; }
+.visual-host :deep(.milkdown .ProseMirror.md-editor-preview > p) { margin: 0; padding: 0; min-height: 1.5em; line-height: 1.5; }
 .visual-host :deep(.ProseMirror.md-editor-preview) { color: var(--md-theme-color, var(--preview-text)); background-color: var(--md-theme-bg-color, var(--preview-bg)); }
 .visual-host :deep(.milkdown .ProseMirror)::selection,
 .visual-host :deep(.milkdown .ProseMirror *)::selection { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 28%, var(--editor-bg)); }

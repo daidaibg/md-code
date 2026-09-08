@@ -3,7 +3,8 @@ import { defaultHandlers, type Options } from 'mdast-util-to-markdown';
 import { $remark } from '@milkdown/kit/utils';
 
 function blank(node: Nodes): boolean {
-  return node.type === 'paragraph' && (node.children.length === 0 || node.children.every(child =>
+  // Milkdown omits children when serializing an empty trailing paragraph.
+  return node.type === 'paragraph' && (!node.children?.length || node.children.every(child =>
     (child.type === 'text' && /^[\t ]*$/u.test(child.value)) ||
     // Milkdown emits this sentinel for an editable empty paragraph.
     (child.type === 'html' && /^<br\s*\/?>$/u.test(child.value))
@@ -16,15 +17,16 @@ export const remarkVisualBlankLines = $remark('note-blank-lines', () => function
     handlers: {
       paragraph(node: Paragraph, parent, state, info) {
         if (parent?.type === 'root' && blank(node)) {
-          return node.children.map(child => child.type === 'text' ? child.value : '').join('');
+          return (node.children ?? []).map(child => child.type === 'text' ? child.value : '').join('');
         }
         return defaultHandlers.paragraph(node, parent, state, info);
       },
       root(node: Root, parent, state, info) {
-        if (node.children.length && node.children.every(blank)) return '\n'.repeat(node.children.length);
+        const children = node.children ?? [];
+        if (children.length && children.every(blank)) return '\n'.repeat(children.length);
         const output = defaultHandlers.root(node, parent, state, info);
         // The final newline terminates the last empty source line.
-        return output + (node.children.length && blank(node.children.at(-1)!) ? '\n' : '');
+        return output + (children.length && blank(children.at(-1)!) ? '\n' : '');
       }
     },
     join: [(left, right, parent) => {

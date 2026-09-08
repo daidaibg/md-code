@@ -1,7 +1,7 @@
 {
     "name": "md-code",
     "private": true,
-    "version": "0.4.3",
+    "version": "0.4.5",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -19,6 +19,7 @@
     "dependencies": {
         "@codemirror/language": "^6.12.4",
         "@codemirror/view": "^6.43.11",
+        "@floating-ui/vue": "^2.0.1",
         "@lezer/highlight": "^1.2.3",
         "@mdit/plugin-katex": "^1.0.1",
         "@mdit/plugin-tasklist": "^1.0.1",

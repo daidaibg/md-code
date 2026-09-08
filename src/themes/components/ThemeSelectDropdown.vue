@@ -24,7 +24,7 @@ const currentLabel = computed(
     open-on-hover
   >
     <template #trigger>
-      <span class="theme-select-trigger">{{ prefix }}：{{ currentLabel }}</span>
+      <span class="theme-select-trigger">{{ prefix }}：{{ currentLabel }}<span class="theme-chevron" aria-hidden="true">▾</span></span>
     </template>
     <button
       v-for="option in options"
@@ -86,4 +86,5 @@ const currentLabel = computed(
     outline: none;
   }
 }
+.theme-chevron { display: inline-block; margin-left: 8px; font-size: 16px; line-height: 1; vertical-align: -1px; }
 </style>

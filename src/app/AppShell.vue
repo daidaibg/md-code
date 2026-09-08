@@ -11,8 +11,10 @@ import { useDocumentManager } from '@/document/useDocumentManager';
 import { useDesktopWindow } from '@/app/useDesktopWindow';
 import { readWorkspaceSession, saveWorkspaceSession } from '@/app/workspaceSession';
 import DocumentEditor from '@/editor/components/DocumentEditor.vue';
+import MarkdownDocumentEditor from '@/editor/components/MarkdownDocumentEditor.vue';
 import SettingsPage from '@/settings/components/SettingsPage.vue';
 import NotePanel from '@/notes/components/NotePanel.vue';
+import NoteErrorBoundary from '@/notes/components/NoteErrorBoundary.vue';
 import { openDetachedNotesWindow } from '@/notes/noteService';
 import packageMetadata from '../../package.json';
 import { supportsPreview } from '@/editor/language/languageManager';
@@ -209,8 +211,8 @@ function closeNotes(): void {
   }
 }
 
-function closeTabScope(target: WorkspaceTabTarget, scope: WorkspaceTabCloseScope): void {
-  const tabs: WorkspaceTabTarget[] = [
+function closeTabScope(target: WorkspaceTabTarget, scope: WorkspaceTabCloseScope, order?: WorkspaceTabTarget[]): void {
+  const tabs: WorkspaceTabTarget[] = order ?? [
     ...documents.value.map(document => ({ kind: 'document' as const, id: document.id })),
     ...(settingsOpen.value ? [{ kind: 'settings' as const }] : []),
     ...(notesOpen.value ? [{ kind: 'notes' as const }] : [])
@@ -435,6 +437,7 @@ onBeforeUnmount(() => {
         v-show="activeWorkspace === 'notes'"
         class="workspace-page"
       >
+      <NoteErrorBoundary>
       <NotePanel
         ref="notePanel"
         :directory="settingsStore.notesDirectory"
@@ -448,13 +451,15 @@ onBeforeUnmount(() => {
         @update:preview-theme="editorStore.setPreviewTheme"
         @update:code-theme="editorStore.setCodeTheme"
       />
+      </NoteErrorBoundary>
       </div>
       <div
         v-if="activeDocument"
         v-show="activeWorkspace === 'document'"
         class="workspace-page"
       >
-      <DocumentEditor
+      <component
+        :is="activeDocument.language === 'markdown' ? MarkdownDocumentEditor : DocumentEditor"
         :key="activeDocument.id"
         ref="documentEditor"
         :document="activeDocument"

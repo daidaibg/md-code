@@ -17,7 +17,7 @@ const diagrams: Array<{ type: MermaidDiagramType; label: string }> = [
 </script>
 
 <template>
-  <ToolbarDropdown open-on-hover label="Mermaid" title="插入 Mermaid 图表">
+  <ToolbarDropdown open-on-hover label="Mermaid" title="插入 Mermaid 图表" panel-class="mermaid-panel">
     <template #trigger><ToolbarIcon name="mermaid" /></template>
     <button
       v-for="item in diagrams"

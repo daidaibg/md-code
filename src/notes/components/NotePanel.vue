@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
+import Sortable from 'sortablejs';
 import ScrollArea from '@/components/scroll/ScrollArea.vue';
 import DocumentEditor from '@/editor/components/DocumentEditor.vue';
 import { PaneResizeManager } from '@/editor/layout/PaneResizeManager';
 import EditorViewControls from '@/editor/components/EditorViewControls.vue';
+import MarkdownEditorHeader from '@/editor/components/MarkdownEditorHeader.vue';
+import ToolbarDropdown from '@/components/dropdown/ToolbarDropdown.vue';
 import { confirmDesktop } from '@/filesystem/fileSystemService';
 import { useNotesStore, type Note } from '@/store/notes';
 import { broadcastNotesChange, resolveNotesDirectory, NOTES_CHANGED_EVENT, type NotesChange } from '@/notes/noteService';
@@ -30,8 +33,63 @@ const emit = defineEmits<{
   'update:code-theme': [theme: CodeThemeName];
 }>();
 const store = useNotesStore();
-const { activeId, activeNote, orderedNotes, loading, error } = storeToRefs(store);
+const { activeId, loading, error } = storeToRefs(store);
+const activeNote = computed(() => store.activeNote ?? null);
 const search = ref('');
+const noteListRoot = ref<HTMLElement>();
+let noteSortable: Sortable | undefined;
+let noteOrderBeforeDrag: Element[] = [];
+let noteOrderEndAnchor: ChildNode | null = null;
+watch(noteListRoot, root => {
+  noteSortable?.destroy();
+  noteSortable = undefined;
+  if (!root) return;
+  noteSortable = Sortable.create(root, {
+    draggable: '.note-list-item',
+    animation: 150,
+    forceFallback: true,
+    fallbackOnBody: true,
+    fallbackTolerance: 5,
+    filter: 'input',
+    preventOnFilter: false,
+    ghostClass: 'note-sort-ghost',
+    onStart: () => {
+      closeContextMenu();
+      noteOrderBeforeDrag = [...root.children].filter(child => child.matches('.note-list-item'));
+      noteOrderEndAnchor = noteOrderBeforeDrag.at(-1)?.nextSibling ?? null;
+    },
+    onMove: event => store.isPinned(event.dragged.dataset.noteId ?? '') === store.isPinned(event.related.dataset.noteId ?? ''),
+    onEnd: event => {
+      const id = event.item.dataset.noteId;
+      const previous = event.item.previousElementSibling as HTMLElement | null;
+      const next = event.item.nextElementSibling as HTMLElement | null;
+      const nextId = next?.dataset.noteId;
+      const previousId = previous?.dataset.noteId;
+      const useNext = !!id && !!nextId && store.isPinned(id) === store.isPinned(nextId);
+      const target = useNext ? nextId : previousId;
+      const after = !useNext;
+      const originalOrder = noteOrderBeforeDrag;
+      const endAnchor = noteOrderEndAnchor;
+      // Wait for Sortable cleanup and preserve the v-for Fragment end anchor.
+      // Appending after that anchor leaves Vue updating a different DOM tree.
+      queueMicrotask(() => {
+        if (noteListRoot.value !== root || !root.isConnected) return;
+        if (endAnchor && endAnchor.parentNode !== root) return;
+        for (const child of originalOrder) {
+          if (child.parentNode === root) root.insertBefore(child, endAnchor);
+        }
+        if (id && target) store.moveNote(id, target, after);
+      });
+    }
+  });
+}, { flush: 'post' });
+function onListStorage(event: StorageEvent): void {
+  if (event.key === `md-code:note-list:${props.directory.trim()}`) store.reloadListPreferences();
+}
+function pinFromContextMenu(): void {
+  if (contextNote.value) store.togglePinned(contextNote.value.id);
+  closeContextMenu();
+}
 const saving = ref(false);
 const sidebarCollapsed = ref(false);
 const noteBody = ref<HTMLElement>();
@@ -87,9 +145,10 @@ let disposed = false;
 const sourceId = globalThis.crypto?.randomUUID?.() ?? `notes-${Date.now()}-${Math.random()}`;
 
 const visibleNotes = computed(() => {
+  const notes = store.orderedNotes ?? [];
   const keyword = search.value.trim().toLocaleLowerCase();
-  if (!keyword) return orderedNotes.value;
-  return orderedNotes.value.filter(note =>
+  if (!keyword) return notes;
+  return notes.filter(note =>
     (store.noteTitle(note) + '\n' + note.content).toLocaleLowerCase().includes(keyword)
   );
 });
@@ -326,6 +385,7 @@ onMounted(() => {
   document.addEventListener('keydown', onDocumentKeydown);
   window.addEventListener('resize', closeContextMenu);
   window.addEventListener('blur', closeContextMenu);
+  window.addEventListener('storage', onListStorage);
   void store.load(props.directory);
   if (isTauriRuntime()) {
     void import('@tauri-apps/api/event').then(async ({ listen }) => {
@@ -344,6 +404,8 @@ onMounted(() => {
   }
 });
 onBeforeUnmount(() => {
+  noteSortable?.destroy();
+  window.removeEventListener('storage', onListStorage);
   sidebarResizeManager.destroy();
   bodyResizeObserver?.disconnect();
   disposed = true;
@@ -358,15 +420,12 @@ onBeforeUnmount(() => {
 
 <template>
   <aside class="note-panel" :class="{ detached }" aria-label="Markdown 便签">
-    <header class="note-header">
-      <strong>便签</strong>
-      <div v-if="activeNote" class="note-editor-switch" role="group" aria-label="便签编辑方式">
-        <button type="button" :class="{ selected: visualMode }" :aria-pressed="visualMode" @click="useVisualEditor">可视化</button>
-        <button type="button" :class="{ selected: !visualMode }" :aria-pressed="!visualMode" @click="updateMode('editor')">源码</button>
-      </div>
+    <MarkdownEditorHeader title="便签" class="note-header">
       <EditorViewControls
         v-if="activeNote"
         class="note-view-controls"
+        show-editor-switch
+        @update:visual="$event ? useVisualEditor() : updateMode('editor')"
         :visual="visualMode"
         :mode="currentMode"
         :toc-open="currentTocOpen"
@@ -377,10 +436,15 @@ onBeforeUnmount(() => {
         @update:code-theme="emit('update:code-theme', $event)"
         @toggle-toc="toggleCurrentToc"
       />
+      <template #actions>
       <span class="save-state">{{ error ? '保存失败' : saving ? '保存中…' : '自动保存' }}</span>
-      <button v-if="!detached" type="button" title="在独立窗口中打开" aria-label="在独立窗口中打开便签" @click="emit('detach')">↗</button>
-      <button type="button" title="便签设置" @click="emit('settings')">⚙</button>
-    </header>
+      <ToolbarDropdown label="更多便签操作" title="更多" align="right">
+        <template #trigger><span class="note-more-icon">•••</span></template>
+        <button v-if="!detached" class="note-more-item" type="button" role="menuitem" @click="emit('detach')">在独立窗口中打开</button>
+        <button class="note-more-item" type="button" role="menuitem" @click="emit('settings')">便签设置</button>
+      </ToolbarDropdown>
+      </template>
+    </MarkdownEditorHeader>
 
     <div ref="noteBody" class="note-body" :class="{ 'sidebar-collapsed': sidebarCollapsed, 'sidebar-resizing': sidebarResizing }" :style="noteBodyStyle">
       <aside class="note-sidebar" aria-label="便签侧边栏">
@@ -398,9 +462,11 @@ onBeforeUnmount(() => {
           </template>
         </div>
         <ScrollArea v-if="!sidebarCollapsed" class="note-list" label="便签列表">
+        <div ref="noteListRoot">
         <div
           v-for="note in visibleNotes"
           :key="note.id"
+          :data-note-id="note.id"
           class="note-list-item"
           role="button"
           tabindex="0"
@@ -423,9 +489,10 @@ onBeforeUnmount(() => {
             @keydown.escape.prevent.stop="cancelRename"
             @blur="commitRename(note)"
           />
-          <strong v-else>{{ store.noteTitle(note) }}</strong>
+          <strong v-else><small v-if="store.isPinned(note.id)" class="note-pin-label">置顶</small>{{ store.noteTitle(note) }}</strong>
           <small>{{ formatUpdatedAt(note.updatedAt) }}</small>
           <span>{{ note.content.replace(/^#{1,6}\s+/u, '').replace(/\s+/gu, ' ').slice(0, 75) }}</span>
+        </div>
         </div>
         <p v-if="!loading && visibleNotes.length === 0" class="note-empty">{{ search ? '没有匹配的便签' : '点击“新建”创建 Markdown 便签' }}</p>
         </ScrollArea>
@@ -500,6 +567,7 @@ onBeforeUnmount(() => {
     @contextmenu.prevent
   >
     <button type="button" role="menuitem" @click="renameFromContextMenu">重命名</button>
+    <button type="button" role="menuitem" @click="pinFromContextMenu">{{ store.isPinned(contextNote.id) ? '取消置顶' : '置顶' }}</button>
     <button type="button" class="danger" role="menuitem" @click="deleteFromContextMenu">删除</button>
   </section>
 </template>
@@ -512,38 +580,42 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 34px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   color: var(--text-primary);
   background: var(--panel-bg);
   overflow: hidden;
 }
-.note-header { display: flex; align-items: center; }
-.note-header { gap: 6px; padding: 0 7px 0 12px; border-bottom: 1px solid var(--border-color); background: var(--chrome-bg); }
-.note-header strong { margin-right: auto; flex: 0 0 auto; font-size: 13px; }
 .note-view-controls { flex: 0 1 auto; }
-.save-state { flex: 0 0 auto; color: var(--text-muted); font-size: 10px; }
+.save-state { flex: 0 0 auto; color: var(--text-secondary); font-size: 12px; }
+.save-state::before { content: '⟳'; margin-right: 6px; font-size: 16px; vertical-align: -1px; }
+.note-more-icon { font-size: 14px; letter-spacing: 1px; }
+.note-more-item { display: block; width: 100%; padding: 7px 12px; border: 0; border-radius: 4px; color: var(--text-primary); background: transparent; text-align: left; white-space: nowrap; cursor: pointer; font-size: 12px; }
+.note-more-item:hover { background: var(--control-hover); }
 .note-header button, .sidebar-actions button { border: 0; border-radius: 4px; color: var(--text-secondary); background: transparent; cursor: pointer; }
-.note-header > button { width: 25px; height: 25px; font-size: 15px; }
-.note-header > button { flex-shrink: 0; }
+.note-header button { width: 25px; height: 25px; font-size: 15px; flex-shrink: 0; }
 .note-header button:hover { color: var(--text-primary); background: var(--control-hover); }
 .note-body { min-height: 0; min-width: 0; display: grid; }
 .sidebar-resizer { position: relative; z-index: 8; cursor: col-resize; touch-action: none; background: transparent; }
 .sidebar-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: var(--border-color); }
 .sidebar-resizer:hover::after, .sidebar-resizer:focus-visible::after, .sidebar-resizing .sidebar-resizer::after { background: var(--accent); }
 .sidebar-resizing { user-select: none; }
-.note-sidebar { min-width: 0; min-height: 0; display: grid; grid-template-rows: 37px minmax(0, 1fr); border-right: 1px solid var(--border-color); background: var(--panel-muted); overflow: hidden; }
+.note-sidebar { --note-sidebar-bg: color-mix(in srgb, var(--accent) 5%, var(--panel-bg)); --note-sidebar-border: color-mix(in srgb, var(--accent) 12%, var(--border-subtle)); min-width: 0; min-height: 0; display: grid; grid-template-rows: 37px minmax(0, 1fr); border-right: 1px solid var(--note-sidebar-border); background: var(--note-sidebar-bg); overflow: hidden; }
 .note-body.sidebar-collapsed .note-sidebar { grid-template-rows: 37px; }
-.sidebar-actions { min-width: 0; display: flex; align-items: center; gap: 4px; padding: 4px; border-bottom: 1px solid var(--border-subtle); }
+.sidebar-actions { min-width: 0; display: flex; align-items: center; gap: 4px; padding: 4px; border-bottom: 1px solid var(--note-sidebar-border); background: color-mix(in srgb, var(--accent) 7%, var(--panel-bg)); }
 .sidebar-actions input { min-width: 0; height: 27px; flex: 1; padding: 0 7px; border: 1px solid var(--border-color); border-radius: 4px; color: inherit; background: var(--panel-bg); font-size: 11px; outline: none; }
-.sidebar-actions input:focus { border-color: var(--accent); }
+.sidebar-actions input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent); }
 .sidebar-actions button { width: 27px; height: 27px; flex: 0 0 27px; padding: 0; font-size: 15px; }
 .sidebar-actions button:hover:not(:disabled) { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, var(--panel-bg)); }
 .sidebar-actions .collapse-action { order: -1; font-size: 20px; line-height: 1; }
 .sidebar-actions .primary { color: #fff; background: var(--accent); }
 .note-list { min-height: 0; }
-.note-list-item { position: relative; width: 100%; display: grid; gap: 3px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--border-subtle); color: inherit; background: transparent; text-align: left; cursor: pointer; }
-.note-list-item:hover { background: var(--control-hover); }
-.note-list-item.active { background: color-mix(in srgb, var(--accent) 12%, var(--panel-bg)); }
+.note-list-item { position: relative; width: 100%; display: grid; gap: 3px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--note-sidebar-border); color: inherit; background: transparent; text-align: left; cursor: pointer; transition: background-color .15s, box-shadow .15s; }
+.note-list-item:hover { background: color-mix(in srgb, var(--accent) 10%, var(--panel-bg)); }
+.note-list-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.note-sort-ghost { opacity: 0.35; }
+.note-list-item .note-pin-label { margin-right: 6px; color: var(--accent); font-size: 9px; font-weight: normal; }
+.note-list-item.active { background: color-mix(in srgb, var(--accent) 16%, var(--panel-bg)); box-shadow: inset 3px 0 0 var(--accent); }
+.note-list-item.active:hover { background: color-mix(in srgb, var(--accent) 20%, var(--panel-bg)); }
 .note-list-item strong, .note-list-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-list-item strong { font-size: 12px; }
 .note-list-item small { color: var(--text-muted); font-size: 9px; }
@@ -564,8 +636,6 @@ onBeforeUnmount(() => {
 .visual-unavailable { flex: 0 0 auto; margin: 0; padding: 6px 12px; font-size: 12px; color: var(--text-secondary); background: var(--panel-bg); }
 @media (max-width: 980px) {
   .note-panel { grid-template-rows: auto minmax(0, 1fr); }
-  .note-header { flex-wrap: wrap; min-height: 34px; padding-top: 3px; padding-bottom: 3px; }
-  .note-view-controls { order: 1; flex: 1 0 100%; justify-content: flex-end; }
 }
 .note-placeholder { display: grid; place-items: center; grid-row: 1 / -1; }
 .note-error { position: absolute; right: 12px; bottom: 12px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--danger); border-radius: 4px; color: var(--danger); background: var(--panel-bg); font-size: 10px; }
