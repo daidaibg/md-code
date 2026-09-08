@@ -4,7 +4,7 @@ import type { UnlistenFn } from '@tauri-apps/api/event';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { detectLanguage, languageLabel } from '@/editor/language/languageManager';
 import { isTauriRuntime } from '@/filesystem/fileSystemService';
-import appLogoUrl from '../../../src-tauri/icons/32x32.png';
+import appLogoUrl from '../../../src-tauri/icons/128x128.png';
 import type { EditorMode, EditorTheme, RecentFile, SupportedLanguage } from '@/types/editor';
 import type { ApplicationUpdateStatus } from '@/update/useApplicationUpdater';
 
