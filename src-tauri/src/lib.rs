@@ -138,7 +138,7 @@ pub fn run() {
             )?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&tray_menu)
-                .menu_on_left_click(false)
+                .show_menu_on_left_click(false)
                 .tooltip("MD Code");
             if let Some(icon) = app.default_window_icon() {
                 tray = tray.icon(icon.clone());
