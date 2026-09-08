@@ -136,9 +136,42 @@
     }
   }
 
-  // Default reading theme: use a quiet GitHub-style surface in light mode.
+  .md-editor-preview .md-text-flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin: 20px 0;
+    padding: 20px;
+    border: 1px solid #d8dee4;
+    border-radius: 8px;
+    background: #f6f8fa;
+    color: #24292f;
+
+    .md-text-flow-step {
+      width: min(100%, 720px);
+      box-sizing: border-box;
+      padding: 10px 14px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 1px 2px #1f23280a;
+      text-align: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .md-text-flow-arrow {
+      height: 18px;
+      color: #57606a;
+      font-size: 20px;
+      line-height: 18px;
+    }
+  }
+
+  // Default reading theme: use a quiet GitHub-style surface.
   // Share the palette between rendered fences and the editable code node.
-  &:not(.md-editor-dark) .md-editor-preview.default-theme {
+  .md-editor-preview.default-theme {
     --md-theme-code-block-bg-color: #f6f8fa;
     --md-theme-code-before-bg-color: #f6f8fa;
     --md-theme-code-block-color: #24292f;

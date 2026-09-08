@@ -33,6 +33,7 @@ import '@/markdown/themes/admonition.css';
 import { scopeVisualCodeCss, createVisualCodeTheme } from '@/notes/visualCodeTheme';
 import { resolveCodeThemeCss } from '@/themes/codeThemeCss';
 import { previewThemeClass } from '@/themes/themeRegistry';
+import { createVerticalTextFlowElement } from '@/markdown/textFlowPreview';
 import MarkdownToc from '@/markdown/components/MarkdownToc.vue';
 import '@vavt/markdown-theme/css/all.css';
 import '@/markdown/themes/typography.scss';
@@ -127,7 +128,10 @@ function relocateFloatingElements(): void {
 }
 const scrollViewport = ref<HTMLElement>();
 const themeScope = `note-visual-${useId().replace(/[^a-z0-9_-]/giu, '-')}`;
-const codeCss = computed(() => scopeVisualCodeCss(resolveCodeThemeCss(props.codeTheme, props.theme), `.${themeScope}`));
+const codeCss = computed(() => scopeVisualCodeCss(resolveCodeThemeCss(
+  props.codeTheme,
+  props.previewTheme === 'default' ? 'light' : props.theme
+), `.${themeScope}`));
 const headings = ref<TocItem[]>([]);
 const activeHeading = ref<string | null>(null);
 const headingPositions = new Map<string, number>();
@@ -642,24 +646,41 @@ onMounted(async () => {
         previewOnlyByDefault: true,
         previewToggleButton: previewOnly => previewOnly ? '编辑源码' : '显示图表',
         renderPreview: (language, content, applyPreview) => {
-          if (language.toLowerCase() !== 'mermaid') return previous.renderPreview(language, content, applyPreview);
-          const diagram = document.createElement('div');
-          diagram.className = 'visual-mermaid-preview';
-          diagram.textContent = '正在渲染图表…';
+          const normalizedLanguage = language.toLowerCase();
+          if (normalizedLanguage === 'text') {
+            const flow = createVerticalTextFlowElement(content);
+            if (flow) return flow;
+          }
+          if (normalizedLanguage !== 'mermaid') return previous.renderPreview(language, content, applyPreview);
+          const renderId = globalThis.crypto.randomUUID();
+          const loading = document.createElement('div');
+          loading.className = 'visual-mermaid-preview';
+          loading.dataset.mermaidRenderId = renderId;
+          loading.textContent = '正在渲染图表…';
           void import('mermaid').then(async ({ default: mermaid }) => {
             if (disposed) return;
             mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: props.theme === 'dark' ? 'dark' : 'default' });
-            const result = await mermaid.render(`visual-mermaid-${globalThis.crypto.randomUUID()}`, content);
-            if (disposed) return;
-            diagram.innerHTML = result.svg;
-            // Milkdown sanitizes/copies the supplied element; mutating the
-            // original loading element cannot update the rendered preview.
-            applyPreview(diagram);
+            const result = await mermaid.render(`visual-mermaid-${renderId}`, content);
+            // Every source edit creates a new loading node. Only publish the
+            // result while that exact node is still visible, otherwise a slow
+            // render could overwrite the live preview with older source.
+            if (disposed || !host.value?.querySelector(`[data-mermaid-render-id="${renderId}"]`)) return;
+            const rendered = document.createElement('div');
+            rendered.className = 'visual-mermaid-preview';
+            rendered.dataset.mermaidRenderId = renderId;
+            rendered.innerHTML = result.svg;
+            // Use a fresh element so Milkdown's shallow ref observes the
+            // asynchronous replacement of its sanitized loading-node copy.
+            applyPreview(rendered);
           }).catch(error => {
-            diagram.textContent = `图表暂时无法渲染，请点击“编辑源码”修改：${error instanceof Error ? error.message : String(error)}`;
-            if (!disposed) applyPreview(diagram);
+            if (disposed || !host.value?.querySelector(`[data-mermaid-render-id="${renderId}"]`)) return;
+            const failed = document.createElement('div');
+            failed.className = 'visual-mermaid-preview';
+            failed.dataset.mermaidRenderId = renderId;
+            failed.textContent = `图表暂时无法渲染，请点击“编辑源码”修改：${error instanceof Error ? error.message : String(error)}`;
+            applyPreview(failed);
           });
-          return diagram;
+          return loading;
         }
       })))
       .use(visualAdmonition)

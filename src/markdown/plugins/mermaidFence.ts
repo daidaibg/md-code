@@ -1,5 +1,6 @@
 ﻿import type MarkdownIt from 'markdown-it';
 import type { MarkdownPlugin } from '@/markdown/core/pluginRegistry';
+import { renderVerticalTextFlowHtml } from '@/markdown/textFlowPreview';
 
 function escapeHtml(value: string): string {
   return value
@@ -17,6 +18,11 @@ export const mermaidFencePlugin: MarkdownPlugin = {
     markdown.renderer.rules.fence = (tokens, index, options, env, self) => {
       const token = tokens[index];
       const language = token.info.trim().split(/\s+/u)[0]?.toLowerCase();
+
+      if (language === 'text') {
+        const flow = renderVerticalTextFlowHtml(token.content);
+        if (flow) return `${flow}\n`;
+      }
 
       if (language !== 'mermaid') {
         return fallback

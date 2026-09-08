@@ -41,7 +41,10 @@ const renderedHtml = computed(() =>
   DOMPurify.sanitize(markdown.value.render(props.source), { ALLOWED_URI_REGEXP: safePreviewUri })
 );
 const tocItems = computed(() => extractHeadings(markdown.value, props.source));
-const activeCodeCss = computed(() => resolveCodeThemeCss(props.codeTheme, props.theme));
+const activeCodeCss = computed(() => resolveCodeThemeCss(
+  props.codeTheme,
+  props.previewTheme === 'default' ? 'light' : props.theme
+));
 
 function loadMermaid(): Promise<MermaidApi> {
   mermaidPromise ??= import('mermaid').then((module) => module.default);
