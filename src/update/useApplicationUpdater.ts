@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { isTauriRuntime } from '@/filesystem/fileSystemService';
@@ -18,6 +19,7 @@ export function useApplicationUpdater() {
   const downloadedBytes = ref(0);
   const contentLength = ref<number>();
   const manualCheckVisible = ref(false);
+  const errorMessage = ref('');
   let pendingUpdate: Update | null = null;
   let feedbackTimer = 0;
 
@@ -67,10 +69,20 @@ export function useApplicationUpdater() {
 
     clearFeedbackTimer();
     manualCheckVisible.value = manual;
+    errorMessage.value = '';
     status.value = 'checking';
 
     try {
-      const update = await check({ timeout: 15_000 });
+      const headers = { Accept: 'application/json', 'User-Agent': 'MD-Code-Updater' };
+      const proxy = await invoke<string | null>('system_http_proxy').catch(() => null);
+      let update: Update | null;
+      try {
+        update = await check({ timeout: 30_000, headers, proxy: proxy ?? undefined });
+      } catch (proxyError) {
+        if (!proxy) throw proxyError;
+        // A stale Windows proxy must not prevent updating on a direct network.
+        update = await check({ timeout: 30_000, headers });
+      }
       if (!update) {
         if (manualCheckVisible.value) showManualResult('up-to-date');
         else status.value = 'idle';
@@ -93,11 +105,15 @@ export function useApplicationUpdater() {
             if (contentLength.value) downloadedBytes.value = contentLength.value;
           }
         },
-        { timeout: 30 * 60_000 }
+        {
+          timeout: 30 * 60_000,
+          headers: { Accept: 'application/octet-stream', 'User-Agent': 'MD-Code-Updater' }
+        }
       );
 
       status.value = 'ready';
-    } catch {
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : String(error);
       await clearPendingUpdate();
       if (manualCheckVisible.value) showManualResult('failed');
       else status.value = 'idle';
@@ -120,6 +136,7 @@ export function useApplicationUpdater() {
     status,
     version,
     progress,
+    errorMessage,
     manualCheckVisible,
     checkAndDownload,
     installAndRestart

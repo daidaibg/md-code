@@ -373,6 +373,7 @@ onBeforeUnmount(() => {
       :update-status="applicationUpdater.status.value"
       :update-version="applicationUpdater.version.value"
       :update-progress="applicationUpdater.progress.value"
+      :update-error="applicationUpdater.errorMessage.value"
       :manual-check-visible="applicationUpdater.manualCheckVisible.value"
       @new="newDocument"
       @open="openDocuments"

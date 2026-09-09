@@ -9,6 +9,7 @@ use commands::filesystem::{
     write_text_file,
 };
 use commands::notes::{delete_note, load_notes, resolve_notes_directory, save_note};
+use commands::system_proxy::system_http_proxy;
 use file_watcher::{sync_file_watcher, FileWatcherState};
 use startup_files::{initial_open_paths, paths_from_args};
 use tauri::{
@@ -182,7 +183,8 @@ pub fn run() {
             schedule_webview_cache_cleanup,
             exit_application,
             open_notes_window,
-            open_main_settings
+            open_main_settings,
+            system_http_proxy
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

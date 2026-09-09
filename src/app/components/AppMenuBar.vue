@@ -20,6 +20,7 @@ const props = defineProps<{
   updateStatus: ApplicationUpdateStatus;
   updateVersion: string;
   updateProgress?: number;
+  updateError?: string;
   manualCheckVisible: boolean;
 }>();
 
@@ -187,6 +188,7 @@ onBeforeUnmount(() => {
       v-else-if="updateStatus === 'up-to-date' || updateStatus === 'failed'"
       class="update-feedback"
       :class="{ failed: updateStatus === 'failed' }"
+      :title="updateStatus === 'failed' ? updateError : undefined"
       aria-live="polite"
     >
       {{ updateStatus === 'failed' ? '检查更新失败' : '已是最新版' }}
