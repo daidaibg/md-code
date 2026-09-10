@@ -192,8 +192,23 @@
       color: var(--md-theme-code-block-color);
       caret-color: var(--md-theme-code-block-color);
     }
-    .milkdown-code-block .cm-cursor { border-left-color: var(--md-theme-code-block-color); }
-    .milkdown-code-block .cm-selectionBackground { background: #0969da33; }
+    .milkdown-code-block .cm-cursor {
+      border-left: 2px solid #007acc;
+      margin-left: -1px;
+    }
+    .milkdown-code-block .cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
+    .milkdown-code-block .cm-selectionBackground {
+      background: #add6ff !important;
+    }
+    .milkdown-code-block .cm-activeLine {
+      background: #f0f6fc !important;
+      box-shadow: inset 2px 0 #007acc;
+    }
+    .milkdown-code-block .cm-matchingBracket {
+      background: #cbe2f7;
+      color: #24292f !important;
+      outline: 1px solid #8ab4d8;
+    }
     .milkdown-code-block .milkdown-code-block-placeholder,
     .milkdown-code-block .milkdown-code-block-placeholder code {
       background: transparent;

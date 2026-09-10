@@ -7,7 +7,26 @@ function languageName(view: EditorView): string {
   return ({ 'c++': 'cpp', 'c#': 'csharp', shell: 'bash' } as Record<string, string>)[name] ?? name;
 }
 
+const mermaidTokenPattern = /(%%.*$)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\b(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|mindmap|timeline|gitGraph|subgraph|end|direction|participant|actor|note|loop|alt|else|opt|par|and|critical|break|rect|activate|deactivate|autonumber)\b|\b(TB|TD|BT|RL|LR)\b|(-\.->|==>|-->|---|--|->)|\b([A-Za-z_][\w-]*)(?=\s*[\[({])/gimu;
+
+function mermaidHighlightDecorations(source: string): DecorationSet {
+  const ranges: ReturnType<Decoration['range']>[] = [];
+  for (const match of source.matchAll(mermaidTokenPattern)) {
+    const from = match.index;
+    const value = match[0];
+    const className = match[1] ? 'hljs-comment'
+      : match[2] ? 'hljs-string'
+        : match[3] ? 'hljs-keyword'
+          : match[4] ? 'hljs-literal'
+            : match[5] ? 'hljs-operator'
+              : 'hljs-title';
+    ranges.push(Decoration.mark({ class: className }).range(from, from + value.length));
+  }
+  return Decoration.set(ranges, true);
+}
+
 function highlightDecorations(view: EditorView, name: string): DecorationSet {
+  if (name === 'mermaid') return mermaidHighlightDecorations(view.state.doc.toString());
   const template = document.createElement('template');
   template.innerHTML = highlight(view.state.doc.toString(), name);
   const ranges: ReturnType<Decoration['range']>[] = [];
